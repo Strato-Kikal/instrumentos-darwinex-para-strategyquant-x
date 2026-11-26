@@ -937,9 +937,11 @@ def cmd_rutas(a):
 
 
 def main(argv=None):
-    if hasattr(sys.stdout, "reconfigure"):  # consolas de Windows sin UTF-8
-        sys.stdout.reconfigure(errors="replace")
-        sys.stderr.reconfigure(errors="replace")
+    # Windows escribe en cp1252 cuando la salida va a otro programa (Claude, Git Bash, pruebas),
+    # y python -I ignora PYTHONUTF8 y PYTHONIOENCODING: la salida siempre en UTF-8.
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(encoding="utf-8", errors="replace")
     comun = argparse.ArgumentParser(add_help=False)
     comun.add_argument("--perfil", help="perfil JSON (por defecto SQD_PERFIL, DATA/perfil.json o config/perfil.json)")
     nav = argparse.ArgumentParser(add_help=False)
