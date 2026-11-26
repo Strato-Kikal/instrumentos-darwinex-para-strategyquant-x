@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Instrumentos SQX</title>
+  <meta name="description" content="Datos de instrumentos de Darwinex para StrategyQuant X, con fuentes, fechas y PDF.">
+  <meta name="theme-color" content="#2C4D76">
+  <meta name="application-name" content="Instrumentos SQX">
+  <meta name="apple-mobile-web-app-title" content="Instrumentos SQX">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="iconos/icono.svg" type="image/svg+xml">
+  <link rel="icon" href="iconos/icono-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="iconos/apple-touch-icon.png">
+  <link rel="stylesheet" href="estilos.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="cabecera">
+    <img class="logo" src="iconos/icono.svg" alt="" width="44" height="44">
+    <div>
+      <h1>Instrumentos SQX</h1>
+      <p class="sub">Datos de instrumentos para StrategyQuant X · Darwinex</p>
+    </div>
+  </header>
+
+  <main>
+    <form id="consulta" class="tarjeta consulta" autocomplete="off" novalidate>
+      <label for="simbolo">¿De qué activo quieres obtener los datos?</label>
+      <div class="fila-consulta">
+        <input id="simbolo" name="simbolo" type="text" placeholder="EURUSD" maxlength="40"
+               autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        <button id="obtener" type="submit">Obtener datos</button>
+      </div>
+      <p class="ayuda">Ticker de Darwinex (EURUSD, NDX, XAUUSD…) o equivalente de Dukascopy (USATECHIDXUSD).</p>
+    </form>
+
+    <section id="mensaje" aria-live="polite"></section>
+
+    <section id="resultado" hidden>
+      <div id="estado" class="tarjeta estado"></div>
+
+      <div class="acciones">
+        <button id="descargar" type="button" class="principal">Descargar PDF</button>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Perfil y cuenta</h2>
+        <p id="perfil" class="perfil"></p>
+      </div>
+
+      <div class="tarjeta">
+        <h2>1. Configuración principal del instrumento</h2>
+        <div id="tabla1"></div>
+      </div>
+
+      <div class="tarjeta">
+        <h2>2. Comisiones, swaps y rollover</h2>
+        <div id="tabla2"></div>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Fuentes consultadas</h2>
+        <ul id="consultas" class="consultas"></ul>
+      </div>
+
+      <div class="tarjeta" id="bloque-notas">
+        <h2>Avisos y notas</h2>
+        <ul id="notas" class="notas"></ul>
+      </div>
+
+      <div class="tarjeta leyenda">
+        <h2>Qué significa cada origen</h2>
+        <ul>
+          <li><span class="origen o-dato">Dato del bróker</span> leído hoy en los datos de Darwinex.</li>
+          <li><span class="origen o-observado">Lectura en vivo</span> spread observado ahora en el feed de precios de Darwinex.</li>
+          <li><span class="origen o-calculo">Cálculo</span> fórmula con sus entradas y fuentes (p. ej., conversión a USD con el BCE).</li>
+          <li><span class="origen o-regla">Regla de formato</span> convención documentada de la skill.</li>
+          <li><span class="origen o-ajuste">Ajuste personal</span> decisión del perfil, no es un dato del bróker.</li>
+          <li><span class="origen o-pendiente">Pendiente de verificar</span> falta evidencia: compruébalo en MT5 → Especificación.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <p>Copia los valores a mano en StrategyQuant X y compáralos con MT5 → Especificación. No es asesoramiento financiero.</p>
+    <p>Basada en la skill «Instrumentos Darwinex para StrategyQuant X» de Kike Argandona · Licencia MIT.</p>
+  </footer>
+</body>
+</html>

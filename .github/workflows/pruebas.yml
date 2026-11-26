@@ -25,3 +25,7 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: python -m unittest discover -s tests -v
+      - name: Pruebas de la app Instrumentos SQX
+        env:
+          PYTHONUTF8: "1"
+        run: python -m unittest discover -s app/tests -v

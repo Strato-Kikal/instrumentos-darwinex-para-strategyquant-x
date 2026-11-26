@@ -1,0 +1,150 @@
+# Instrumentos SQX
+
+Aplicación web instalable (PWA) que prepara los datos de un instrumento de **Darwinex** para **StrategyQuant X (build 143)** y los entrega en PDF. Funciona en el móvil y en el ordenador, sin Claude Code, sin cuentas de IA y sin claves API.
+
+Se basa en la skill «Instrumentos Darwinex para StrategyQuant X» de este repositorio, que **no se modifica**: la app importa `scripts/tabla.py` (perfil, reglas de validación, columnas y formato del PDF) y aplica las reglas de `reference/`.
+
+> Estado: versión 0.1.0, preparada para probar en local. No está publicada en ningún alojamiento.
+
+## Qué hace
+
+1. Escribes un símbolo (`EURUSD`, `NDX`, `XAUUSD`… o el equivalente de Dukascopy `USATECHIDXUSD`) y pulsas **Obtener datos**.
+2. El servidor de la app consulta en ese momento:
+   - **Darwinex**: el JSON que alimenta sus tablas de condiciones (contrato, tick, tick value, swaps, comisión, divisa, día de triple swap).
+   - **Spread actual**: el feed de precios que usa la propia web de Darwinex (widgets.fxbluelabs.com).
+   - **BCE**: tipos de referencia, solo si hay que convertir a USD.
+   - **help.darwinex.com/execution-costs**: comprueba que la comisión se sigue publicando por orden.
+3. Aplica las reglas de la skill, registra cada valor con su fuente y lo valida con `tabla.validar()`. Lo que no tiene evidencia queda **PENDIENTE DE VERIFICAR**.
+4. Muestra los valores (con su origen: dato del bróker, lectura en vivo, cálculo, regla o ajuste personal) y el botón **Descargar PDF**.
+
+El PDF tiene en la página 1 las mismas dos tablas que el PDF de la skill (título, columnas, colores, aviso de tabla incompleta y firma). Las páginas siguientes son un anexo con fuentes, horas de consulta, fórmulas, entradas, perfil, moneda de cuenta y ajustes personales.
+
+Alcance, igual que la skill: Darwinex, cuenta en USD, forex, índices, materias primas/metales y cripto. Acciones, ETF y futuros dan un mensaje de «fuera de alcance».
+
+## Arquitectura elegida y por qué
+
+**PWA + servidor pequeño en Python (solo biblioteca estándar).**
+
+Comprobado el 2026-11-26 desde un navegador:
+
+| Fuente | ¿La puede leer el navegador directamente? |
+|---|---|
+| Darwinex (`/graphics/spreads`) | **No.** Con una cabecera `Origin` de otra web responde `403 Invalid CORS request`. Además, la página de condiciones muestra a los visitantes de España un aviso de bloqueo (CNMV); el JSON sí respondió desde España sin `Origin`. |
+| BCE (XML diario) | **No.** No envía cabeceras CORS. |
+| Feed de spread (fxbluelabs) | Sí (`Access-Control-Allow-Origin: *`). |
+| help.darwinex.com | Sin CORS para lectura desde otra web. |
+
+Una app solo de navegador no puede obtener los datos del bróker, así que hace falta un servidor que haga las consultas. Ese servidor, de paso, sirve la interfaz y genera el PDF. Ventajas:
+
+- Reutiliza `tabla.py` de la skill en lugar de reescribir las reglas en otro lenguaje.
+- Sin dependencias: Python 3.8+ y nada más (no necesita `pip`, ni Chrome en el servidor: el PDF se escribe directamente).
+- Una sola URL sirve para móvil y ordenador; la PWA permite «instalarla» con icono propio.
+
+Alternativas descartadas: app nativa (tiendas, cuentas de desarrollador, más mantenimiento); solo navegador (bloqueada por CORS); generar el PDF con Chrome en el servidor (exige instalar Chrome en el alojamiento y más memoria).
+
+## Ejecutarla en local
+
+Requisitos: Python 3.8 o superior y conexión a Internet.
+
+```bash
+cd instrumentos-darwinex-para-strategyquant-x
+python3 app/servidor.py
+```
+
+Abre `http://127.0.0.1:8000` en el navegador del ordenador.
+
+Para usarla también desde el **móvil en la misma Wi-Fi**:
+
+```bash
+python3 app/servidor.py --red
+```
+
+El servidor muestra la dirección (por ejemplo, `http://192.168.1.20:8000`). macOS puede pedir permiso para aceptar conexiones entrantes. Para pararlo: `Ctrl+C`.
+
+Opciones: `--puerto 9000`, `--host`. Variables: `PORT` (alojamientos), `SQD_PERFIL` (perfil JSON de la skill; por defecto `~/strategyquant-darwinex-datos/perfil.json` si existe, si no `config/perfil.json`).
+
+También puedes abrir directamente un símbolo: `http://127.0.0.1:8000/?simbolo=NDX`.
+
+## Abrirla o instalarla en cada dispositivo
+
+La instalación como app (icono «Instrumentos SQX», ventana propia) **requiere HTTPS**, salvo en el propio ordenador con `127.0.0.1`/`localhost`. Con `http://192.168.x.x` desde el móvil la app funciona en el navegador, pero no se instala como PWA (solo como acceso directo).
+
+| Dispositivo | Abrir | Instalar (con HTTPS) |
+|---|---|---|
+| **Ordenador: Chrome o Edge** (Windows, macOS, Linux) | Abrir la URL | Icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Instrumentos SQX». Funciona ya con `http://127.0.0.1:8000`. |
+| **Mac: Safari** (macOS 14 o posterior) | Abrir la URL | Archivo → «Añadir al Dock». |
+| **Ordenador: Firefox** | Abrir la URL | Firefox de escritorio no instala PWA; se usa como página web. |
+| **Android: Chrome** | Abrir la URL | Menú ⋮ → «Instalar aplicación» o «Añadir a pantalla de inicio». |
+| **iPhone / iPad: Safari** | Abrir la URL | Botón Compartir → «Añadir a pantalla de inicio». |
+
+La etiqueta del icono es «Instrumentos SQX». En pantallas pequeñas el sistema puede recortarla.
+
+La app necesita conexión: sin Internet, la interfaz abre (si está instalada) y avisa de que no puede consultar las fuentes. Los datos nunca se guardan en caché.
+
+## Alojamiento (si más adelante se publica)
+
+No se ha contratado ni publicado nada. Requisitos:
+
+- Python 3.8+ y un proceso que quede escuchando (`python3 app/servidor.py`, puerto en `PORT`).
+- Salida HTTPS hacia `www.darwinex.com`, `help.darwinex.com`, `widgets.fxbluelabs.com` y `www.ecb.europa.eu`. Algunos planes gratuitos solo permiten salir a una lista de dominios: compruébalo antes.
+- HTTPS delante (lo suelen dar los propios alojamientos) para que se pueda instalar como PWA.
+- Memoria y CPU mínimas: cada consulta descarga ~0,5 MB de Darwinex (se guarda 60 s) y genera un PDF de ~12 KB.
+
+Opciones y costes orientativos (comprueba las condiciones actuales antes de elegir; no las he verificado hoy):
+
+- **Tu propio ordenador o una Raspberry Pi** en casa: sin coste, pero solo accesible en tu red salvo que configures un túnel o el router.
+- **Plan gratuito de un PaaS** (Render, Koyeb, Fly.io, Google Cloud Run…): suelen dormir la app tras unos minutos sin uso (primera consulta lenta) y algunos piden tarjeta.
+- **VPS pequeño**: del orden de 4-6 € al mes.
+
+Antes de publicarla para otros usuarios:
+- El endpoint de Darwinex y el feed de spread **no están documentados** como API pública: pueden cambiar sin aviso. Revisa los términos de uso de Darwinex. La app limita a 20 consultas por minuto e IP.
+- Darwinex indica que no ofrece CFD a nuevos clientes minoristas residentes en España.
+
+## Qué hacía Claude y qué hace ahora el código
+
+| Tarea | En la skill | En la app |
+|---|---|---|
+| Identificar el ticker y la clase | Claude | `sqx/instrumento.py` (`buscar`, equivalencias de Dukascopy comprobadas) |
+| Leer las tablas de Darwinex | Claude con Firecrawl/WebFetch | `sqx/fuentes.py` (JSON de Darwinex) |
+| Leer el spread actual | Claude (tabla o `curl` al feed) | `sqx/fuentes.py` (feed de precios) |
+| Convertir a USD con el BCE | Claude | `sqx/instrumento.py` (`usd_por`) |
+| Aplicar reglas (pip, tick real, comisión × 2, triple swap…) | Claude con `reference/` | `sqx/instrumento.py` |
+| Registrar fuentes (esquema 2) | Claude | `sqx/instrumento.py` |
+| Validar | `tabla.py` | `tabla.py` (el mismo código) |
+| PDF | `tabla.py` + Chrome | `sqx/pdf.py` (misma página 1 + anexo) |
+| Resumen de fuentes para el usuario | Respuesta de Claude | Pantalla de resultados y anexo del PDF |
+
+Decisiones conservadoras (para no inventar valores):
+- **Triple swap**: se usa el código `tripleSwapDay` de Darwinex solo si coincide con la nota publicada de su clase (forex miércoles, USDCAD jueves, índices viernes, metales miércoles; notas leídas el 2026-11-26). XTIUSD y XNGUSD tienen nota propia y quedan pendientes. Cripto no tiene nota: pendiente.
+- **Swaps de cripto**: Darwinex no explica su unidad en la tabla: pendientes.
+- **No Pip/Tick**: si `tick value ÷ contrato` no coincide con el `tickSize` de Darwinex, queda pendiente (hoy ocurre con NI225).
+- **Comisión**: solo se calcula si la página de costes de Darwinex sigue diciendo «displayed per order… 2 orders».
+- Las referencias que no se consultan en cada uso (definición de Point value en el foro de StrategyQuant) llevan su fecha real de verificación (2026-10-27), no la de hoy.
+
+## Pruebas
+
+```bash
+python3 -m unittest discover -s app/tests -v   # app (46 pruebas, sin red)
+python3 -m unittest discover -s tests -v       # skill (68 pruebas)
+```
+
+Las pruebas de la app usan respuestas reales guardadas el 2026-11-26 (`app/tests/datos/`), solo como material de prueba. Cubren: EURUSD, USDJPY, USDCAD, GBPJPY, NDX, GDAXI, NI225, XAUUSD, XTIUSD, BTCUSD y USATECHIDXUSD; símbolos desconocidos, fuera de alcance y mal escritos; datos incompletos o contradictorios de Darwinex; caída de Darwinex, del feed de spread, del BCE y de la página de costes; respuestas dañadas; errores de conexión; PDF; servidor, rutas y límite de consultas.
+
+## Estructura
+
+```
+app/
+  servidor.py          servidor HTTP (interfaz + API)
+  sqx/fuentes.py       consulta de fuentes en vivo
+  sqx/instrumento.py   transformación de datos y reglas (antes las aplicaba Claude)
+  sqx/pdf.py           PDF sin dependencias (página 1 de la skill + anexo)
+  sqx/metricas.py      anchos de Helvetica para el PDF
+  web/                 PWA: index.html, app.js, estilos.css, manifest, service worker, iconos
+  tests/               pruebas y datos de prueba
+```
+
+## Autor y licencia
+
+Basada en la skill de **Kike Argandona**. Licencia **MIT** (ver [LICENSE](../LICENSE)). Copyright (c) 2026 Kike Argandona.
+
+Herramienta de preparación de datos. No es asesoramiento financiero. Los CFD tienen un riesgo alto de pérdida. La app no se ha validado dentro de StrategyQuant X: introduce los valores a mano y compáralos con MT5 → Especificación.
