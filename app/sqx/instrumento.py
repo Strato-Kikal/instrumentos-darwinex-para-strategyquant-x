@@ -59,8 +59,17 @@ URL_SQ_PV = ("https://strategyquant.com/forum/topic/"
              "deep-explanation-of-instrument-specifications-pip-tick-size-step-value-etc/")
 FECHA_SQ_PV = "2026-10-27"
 
+# Hora del servidor MT5 de Darwinex (DX-TIME en reference/campos-instrumento.md y horarios.md):
+# las 17:00 de Nueva York son siempre las 00:00 del servidor.
+URL_HORA_MT = "https://help.darwinex.com/metatrader-time"
+URL_REPO = "https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/blob/main/"
+
+# Nombres de las casillas tal como aparecen en StrategyQuant X (la skill mantiene los suyos).
 ETIQUETAS = {k: cab for k, cab, _, _ in tabla.T1 + tabla.T2}
-ETIQUETAS["comision"] = "Comisión a poner en SQ"
+ETIQUETAS.update({"pip_tick": "Pip/Tick Size", "no_pip_tick": "Pip/Tick Step",
+                  "comision": "Comisión a poner en SQ", "rollover": "Rollover (SQX)",
+                  "tipo_swap": "Tipo de swap", "cobro_swap": "Cobro del swap (Darwinex)"})
+EXTRAS = ["tipo_swap", "cobro_swap"]
 ORIGENES = {"dato": "Dato del bróker", "observado": "Lectura en vivo", "calculo": "Cálculo",
             "regla": "Regla de formato", "pendiente": "Pendiente de verificar",
             "ajuste": "Ajuste personal"}
@@ -168,6 +177,8 @@ class Preparacion:
     def __init__(self, simbolo, fuentes, perfil):
         self.simbolo, self.fuentes, self.perfil = simbolo, fuentes, perfil
         self.d, self.fu, self.notas, self.avisos, self.consultas = {}, {}, [], [], []
+        # Casillas que no forman parte del JSON de la skill (esquema 2), con la misma forma de fuente
+        self.x, self.fx = {}, {}
         self._bce = None
 
     # -- registro de fuentes consultadas (para la pantalla y el PDF)
@@ -236,6 +247,8 @@ class Preparacion:
         self.campo_comision()
         self.campos_swap()
         self.campo_triple()
+        self.campo_tipo_swap()
+        self.campo_cobro()
 
         if self.ticker != self.simbolo:
             self.notas.append(f"{self.simbolo} (Dukascopy) es el mismo mercado que {self.ticker} "
@@ -283,8 +296,8 @@ class Preparacion:
                                    "regla": "índices: 1" if self.clase == "indices" else "cripto: 1",
                                    "referencia": f"{REF_REGLAS} (convenciones de la skill)"}
             if self.clase == "crypto":
-                self.avisos.append("La convención Pip/Tick = 1 de cripto se definió con BTCUSD; "
-                                   "con precios bajos, revisa si te conviene otro Pip/Tick.")
+                self.avisos.append("La convención Pip/Tick Size = 1 de cripto se definió con BTCUSD; "
+                                   "con precios bajos, revisa si te conviene otro Pip/Tick Size.")
         else:
             tick = num(self.r, "tickSize")
             if tick is None or tick <= 0:
@@ -292,24 +305,24 @@ class Preparacion:
             else:
                 self.d["pip_tick"] = txt(tick)
                 self.fu["pip_tick"] = self.dato(f"tickSize = {txt(tick)}; convención: en metales y "
-                                                "materias primas Pip/Tick = tick real")
+                                                "materias primas Pip/Tick Size = tick real")
 
     def campo_tick(self):
         pip = self.pip()
         tick_dx = num(self.r, "tickSize")
         if self.clase == "forex":
             if pip is None:
-                return self.pend("no_pip_tick", "falta Pip/Tick")
+                return self.pend("no_pip_tick", "falta Pip/Tick Size")
             calc = pip / 10
             if tick_dx is None:
                 return self.pend("no_pip_tick", "Darwinex no da el tick (tickSize) para confirmarlo")
             if calc != tick_dx:
-                return self.pend("no_pip_tick", f"discrepancia: Pip/Tick ÷ 10 = {txt(calc)}, pero "
+                return self.pend("no_pip_tick", f"discrepancia: Pip/Tick Size ÷ 10 = {txt(calc)}, pero "
                                                 f"Darwinex da tickSize = {txt(tick_dx)}")
             self.d["no_pip_tick"] = txt(calc)
             self.fu["no_pip_tick"] = {
                 "tipo": "calculo",
-                "formula": "Pip/Tick ÷ 10 (Darwinex cotiza el forex con 5 decimales, 3 en JPY)",
+                "formula": "Pip/Tick Size ÷ 10 (Darwinex cotiza el forex con 5 decimales, 3 en JPY)",
                 "entradas": [{"nombre": "pip_tick", "valor": self.d["pip_tick"], "campo": "pip_tick"},
                              self.ent("tickSize de Darwinex (comprobación)", txt(tick_dx))]}
             return
@@ -327,7 +340,7 @@ class Preparacion:
                     self.ent("contrato", txt(ct))]
         if tick_dx is not None:
             entradas.append(self.ent("tickSize de Darwinex (comprobación)", txt(tick_dx)))
-        self.fu["no_pip_tick"] = {"tipo": "calculo", "formula": "tick real = tick_value ÷ contrato",
+        self.fu["no_pip_tick"] = {"tipo": "calculo", "formula": "tick real (Pip/Tick Step) = tick_value ÷ contrato",
                                   "entradas": entradas}
 
     def campo_point_value(self):
@@ -381,7 +394,7 @@ class Preparacion:
         if lectura < 0:
             return self.pend("spread", f"lectura incoherente (ask {txt(ask)} < bid {txt(bid)})")
         if pip is None:
-            return self.pend("spread", "falta Pip/Tick para pasar la lectura a pips")
+            return self.pend("spread", "falta Pip/Tick Size para pasar la lectura a pips")
         pips = lectura / pip
         self.d["spread"] = txt(pips) if pips == pips.quantize(Decimal("0.01")) else cent(pips)
         self.fu["spread"] = {"tipo": "observado", "url": url, "fecha": hora.date().isoformat(),
@@ -466,7 +479,7 @@ class Preparacion:
                 continue
             if self.divisa == "USD":
                 self.d[campo] = importe(v)
-                self.fu[campo] = self.dato("USD por contrato y día; lectura del día")
+                self.fu[campo] = self.dato("USD por lote y día; lectura del día")
                 continue
             f, entradas, formula = self.usd_por(self.divisa)
             if f is None:
@@ -474,8 +487,8 @@ class Preparacion:
                 continue
             self.d[campo] = f"{cent(v * f)} aprox."
             self.fu[campo] = {"tipo": "calculo",
-                              "formula": f"swap por contrato y día en {self.divisa} × {formula} (BCE)",
-                              "entradas": [self.ent(k, txt(v), unidad=f"{self.divisa} por contrato y día")]
+                              "formula": f"swap por lote y día en {self.divisa} × {formula} (BCE)",
+                              "entradas": [self.ent(k, txt(v), unidad=f"{self.divisa} por lote y día")]
                                           + entradas}
 
     def campo_triple(self):
@@ -501,6 +514,43 @@ class Preparacion:
             f"Darwinex «{nota[1]}» (leída el {FECHA_NOTAS})")
 
 
+    def pend_extra(self, campo, motivo):
+        self.x[campo] = PEND
+        self.fx[campo] = {"tipo": "pendiente", "motivo": motivo}
+
+    def campo_tipo_swap(self):
+        """Tipo de swap de SQX. Darwinex publica el swap como importe por lote y día en la divisa
+        de cotización; la app lo deja en USD (convertido con el BCE si hace falta)."""
+        pend = [ETIQUETAS[k] for k in ("swap_largo", "swap_corto") if self.d.get(k) == PEND]
+        if pend:
+            return self.pend_extra("tipo_swap", f"falta {' y '.join(pend)}")
+        self.x["tipo_swap"] = "Dinero / Money"
+        self.fx["tipo_swap"] = self.dato(
+            f"Darwinex publica swapLong y swapShort como importe en {self.divisa} por lote y día"
+            + ("" if self.divisa == "USD" else "; la app los convierte a USD con el BCE")
+            + " → en SQX: tipo Dinero / Money, USD por lote y día")
+
+    def campo_cobro(self):
+        """Hora a la que Darwinex cobra el swap (dato del bróker, distinto del rollover de SQX)."""
+        if self.ticker in NOTA_PROPIA:
+            return self.pend_extra("cobro_swap", f"{self.ticker} tiene su propia nota de swaps "
+                                                 f"({URL_NOTA_PROPIA}); compruébala")
+        nota = NOTAS_TRIPLE.get(self.ticker) or NOTAS_TRIPLE.get(self.clase)
+        if nota is None:
+            return self.pend_extra("cobro_swap", "Darwinex no publica a qué hora cobra el swap de "
+                                                 f"{CLASES[self.clase]['nombre']}")
+        if "17:00 NY" in nota[1]:
+            self.x["cobro_swap"] = "17:00 Nueva York = 00:00 servidor MT5"
+            self.fx["cobro_swap"] = {
+                "tipo": "dato", "url": CLASES[self.clase]["pagina"], "fecha": FECHA_NOTAS,
+                "nota": f"nota de Darwinex «{nota[1]}»; hora del servidor MT5 de Darwinex: las "
+                        f"17:00 de Nueva York son las 00:00 del servidor ({URL_HORA_MT})"}
+        else:
+            self.x["cobro_swap"] = "Al cierre del mercado"
+            self.fx["cobro_swap"] = {"tipo": "dato", "url": CLASES[self.clase]["pagina"],
+                                     "fecha": FECHA_NOTAS, "nota": f"nota de Darwinex «{nota[1]}»"}
+
+
 # ---------------------------------------------------------------- explicación para personas
 
 def explicar(fuente):
@@ -515,7 +565,7 @@ def explicar(fuente):
         return ORIGENES[t], texto
     if t == "observado":
         return ORIGENES[t], (f"{fuente.get('url')} · {fuente.get('fecha')} {fuente.get('hora_utc')} UTC · "
-                             f"lectura {fuente.get('lectura')} ({fuente.get('unidad')}) ÷ Pip/Tick · "
+                             f"lectura {fuente.get('lectura')} ({fuente.get('unidad')}) ÷ Pip/Tick Size · "
                              f"{fuente.get('nota', '')}").rstrip(" ·")
     if t == "regla":
         return ORIGENES[t], f"{fuente.get('regla')} · {fuente.get('referencia')}"
@@ -534,19 +584,99 @@ def explicar(fuente):
     return t or "", ""
 
 
-def detalle(tabla_d, perfil):
-    """Casillas en el orden del PDF, con valor, origen y explicación; después, los ajustes."""
+def detalle(tabla_d, perfil, extras=None):
+    """Casillas en el orden del PDF, con valor, origen, fuente y explicación; después, los ajustes."""
+    valores = dict(tabla_d)
+    fuentes = dict(tabla_d["fuentes"])
+    for k, (v, f) in (extras or {}).items():
+        valores[k], fuentes[k] = v, f
     filas = []
-    for k in tabla.CAMPOS:
-        origen, texto = explicar(tabla_d["fuentes"][k])
-        filas.append({"campo": k, "casilla": ETIQUETAS.get(k, k), "valor": tabla_d[k],
-                      "tipo": tabla_d["fuentes"][k]["tipo"], "origen": origen, "explicacion": texto})
+    for k in tabla.CAMPOS + [k for k in EXTRAS if k in fuentes]:
+        origen, texto = explicar(fuentes[k])
+        filas.append({"campo": k, "casilla": ETIQUETAS.get(k, k), "valor": valores[k],
+                      "tipo": fuentes[k]["tipo"], "origen": origen, "explicacion": texto,
+                      "fuente": fuentes[k]})
+    zona = perfil.d["datos"]["zona_clon"]
     for k in tabla.AJUSTES:
+        texto = (f"Decisión de configuración del perfil «{perfil.d.get('nombre')}», no es un dato "
+                 "del bróker")
+        if k == "rollover":
+            texto = (f"Hora de rollover configurada en SQX (ajuste del perfil). Se aplica sobre los "
+                     f"datos clonados a «{zona}»; no es la hora de cobro de Darwinex")
         filas.append({"campo": k, "casilla": ETIQUETAS.get(k, k), "valor": perfil.ajustes[k],
-                      "tipo": "ajuste", "origen": ORIGENES["ajuste"],
-                      "explicacion": f"Decisión de configuración del perfil «{perfil.d.get('nombre')}», "
-                                     "no es un dato del bróker"})
+                      "tipo": "ajuste", "origen": ORIGENES["ajuste"], "explicacion": texto,
+                      "fuente": {"tipo": "ajuste", "nota": texto}})
     return filas
+
+
+# ---------------------------------------------------------------- textos de la página 1
+
+ESTADO_COMPLETO = "Datos completos · pendiente de validar en SQX"
+
+
+def sin_aprox(v):
+    return v[:-len(" aprox.")] if v.endswith(" aprox.") else v
+
+
+def fecha_bce(fuente):
+    for e in fuente.get("entradas", []):
+        if str(e.get("url", "")).startswith(URL_BCE):
+            return e.get("fecha")
+    return None
+
+
+def textos(tabla_d, perfil, extras):
+    """Texto de cada casilla tal como se copia en SQX, con su unidad y su contexto."""
+    t = {k: tabla_d[k] for k in tabla.CAMPOS}
+    t.update({k: v for k, (v, _) in extras.items()})
+    t.update(perfil.ajustes)
+    fu = tabla_d["fuentes"]
+    if not tabla.es_pendiente(t["spread"]):
+        f = fu["spread"]
+        t["spread"] = f"{t['spread']} pips · lectura puntual\n{f['fecha']} {f['hora_utc']} UTC"
+    c = t["comision"]
+    if not tabla.es_pendiente(c):
+        if tabla_d["modelo_comision"] == "Comisión en porcentaje":
+            t["comision"] = f"{c} % del valor, ida y vuelta"
+        else:
+            t["comision"] = f"{sin_aprox(c)} USD por lote, ida y vuelta"
+            if c.endswith(" aprox."):
+                t["comision"] += f"\naprox. · cambio BCE del {fecha_bce(fu['comision'])}"
+    for k in ("swap_largo", "swap_corto"):
+        v = t[k]
+        if not tabla.es_pendiente(v) and v.endswith(" aprox."):
+            t[k] = f"{sin_aprox(v)}\naprox. · BCE {fecha_bce(fu[k])}"
+    if t.get("tipo_swap") == "Dinero / Money":
+        t["tipo_swap"] = "Dinero / Money\nUSD por lote y día"
+    zona = perfil.d["datos"]["zona_clon"]
+    t["rollover"] = f"{t['rollover']} · ajuste del perfil\nDatos: {zona}"
+    if t.get("cobro_swap", "").startswith("17:00"):
+        t["cobro_swap"] = "17:00 Nueva York\n= 00:00 servidor MT5"
+    return t
+
+
+def pruebas_sqx(tabla_d, perfil):
+    """Comprobaciones que solo se pueden hacer dentro de StrategyQuant X."""
+    pruebas = []
+    c = tabla_d["comision"]
+    if not tabla.es_pendiente(c):
+        if tabla_d["modelo_comision"] == "Comisión en porcentaje":
+            esperado = f"el {c} % del valor de la operación"
+        else:
+            esperado = f"{sin_aprox(c)} USD"
+        pruebas.append(f"Comisión: simula una operación de 1 lote; la comisión total registrada "
+                       f"(ida y vuelta) debe ser {esperado}.")
+    largo, corto = tabla_d["swap_largo"], tabla_d["swap_corto"]
+    rollover = perfil.ajustes["rollover"]
+    if not (tabla.es_pendiente(largo) or tabla.es_pendiente(corto)):
+        pruebas.append(f"Rollover: una operación que cruce las {rollover} (rollover de SQX) debe "
+                       f"cobrar el swap una vez: {sin_aprox(largo)} USD por lote en compra, "
+                       f"{sin_aprox(corto)} en venta.")
+    dia = tabla_d["triple_swap"]
+    if not tabla.es_pendiente(dia):
+        pruebas.append(f"Triple swap: una operación abierta durante el rollover del {dia} debe "
+                       "cobrar el swap triple.")
+    return pruebas
 
 
 def describir_perfil(perfil):
@@ -562,11 +692,21 @@ def preparar(texto, fuentes, perfil):
     inicio = ahora_utc()
     p = Preparacion(simbolo, fuentes, perfil)
     tabla_d, r = p.preparar()
+    extras = {k: (p.x[k], p.fx[k]) for k in EXTRAS}
+    pendientes = r.pendientes + [k for k in EXTRAS if p.x[k] == PEND]
+    faltan = [ETIQUETAS.get(k, k) for k in pendientes]
+    estado = "COMPLETA" if not pendientes else "INCOMPLETA"
+    fila = tabla.fila_pdf(tabla_d, perfil)
+    fila.update({k: v for k, (v, _) in extras.items()})
     return {
         "simbolo": simbolo, "ticker_darwinex": p.ticker, "clase": CLASES[p.clase]["nombre"],
         "consulta_utc": inicio.strftime("%Y-%m-%d %H:%M"),
-        "estado": r.estado, "pendientes": r.pendientes,
+        "estado": estado, "pendientes": pendientes, "faltan": faltan,
+        "estado_texto": ESTADO_COMPLETO if not pendientes else
+                        "Datos incompletos · faltan: " + ", ".join(faltan),
         "avisos": p.avisos + r.avisos, "consultas": p.consultas,
         "perfil": describir_perfil(perfil), "tabla": tabla_d,
-        "fila_pdf": tabla.fila_pdf(tabla_d, perfil), "detalle": detalle(tabla_d, perfil),
+        "fila_pdf": fila, "textos": textos(tabla_d, perfil, extras),
+        "pruebas_sqx": pruebas_sqx(tabla_d, perfil),
+        "detalle": detalle(tabla_d, perfil, extras),
     }

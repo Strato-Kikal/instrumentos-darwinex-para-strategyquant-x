@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Instrumentos SQX">
   <rect width="512" height="512" rx="104" fill="#2C4D76"/>
-  <rect x="96" y="112" width="320" height="22" rx="11" fill="#7A93B2"/>
-  <rect x="96" y="378" width="320" height="22" rx="11" fill="#7A93B2"/>
-  <text x="256" y="318" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="172" letter-spacing="-4" fill="#FFFFFF">SQX</text>
+  <rect x="88" y="112" width="336" height="22" rx="11" fill="#7A93B2"/>
+  <rect x="88" y="378" width="336" height="22" rx="11" fill="#7A93B2"/>
+  <text x="256" y="311" text-anchor="middle" textLength="336" lengthAdjust="spacingAndGlyphs" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="150" fill="#FFFFFF">ISQX</text>
 </svg>

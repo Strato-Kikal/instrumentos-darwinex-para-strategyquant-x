@@ -43,22 +43,40 @@ class TestPdf(unittest.TestCase):
         t = textos_pdf(datos)
         for esperado in (tabla.TITULO, tabla.CREDITO, "1. Configuración principal del instrumento",
                          "2. Comisiones, swaps y rollover", "EURUSD_Darwinex", "WEDNESDAY", "23:59",
-                         "Anexo: fuentes, fechas, cálculos y ajustes", "Ajuste personal"):
+                         "Fuentes y cálculos", "Ajuste personal", "Comprobaciones pendientes en SQX",
+                         "Datos completos · pendiente de validar en SQX", "Pip/Tick Size",
+                         "Pip/Tick Step", "Tipo de swap", "Dinero / Money", "USD por lote y día",
+                         "lectura puntual", "USD por lote, ida y vuelta", "= 00:00 servidor MT5"):
             self.assertIn(esperado, " ".join(t), esperado)
-        cabeceras = " ".join(t)
-        for _, cab, _, _ in tabla.T1 + tabla.T2:
-            for palabra in cab.split():
-                self.assertIn(palabra, cabeceras)
-        self.assertNotIn("TABLA INCOMPLETA", cabeceras)
-        self.assertIn("cuenta en USD", cabeceras)
+        todo = " ".join(t)
+        self.assertNotIn("No Pip/Tick", todo)
+        self.assertNotIn("INCOMPLET", todo)
+        self.assertIn("cuenta en USD", todo)
+        self.assertEqual(datos.count(b"/Type /Page /Parent"), 2)  # sin tercera página
+
+    def test_enlaces_clicables(self):
+        _, datos = self.generar("EURUSD")
+        uris = re.findall(rb"/Subtype /Link /Border \[0 0 0\] /Rect \[[\d. ]+\] /A << /S /URI /URI "
+                          rb"\((https://[^)]+)\)", datos)
+        self.assertGreater(len(uris), 10)
+        for esperado in (b"https://www.darwinex.com/graphics/spreads", b"eurofxref-daily.xml",
+                         b"help.darwinex.com/execution-costs", b"help.darwinex.com/metatrader-time"):
+            self.assertTrue(any(esperado in u for u in uris), esperado)
+        # Las anotaciones están en la página 2 (fuentes), no en la 1
+        paginas = re.findall(rb"/Type /Page /Parent 2 0 R [^\n]*", datos)
+        self.assertNotIn(b"/Annots", paginas[0])
+        self.assertIn(b"/Annots", paginas[1])
 
     def test_pdf_incompleto(self):
         rs, datos = self.generar("EURUSD", "BTCUSD")
         t = " ".join(textos_pdf(datos))
-        self.assertIn("TABLA INCOMPLETA", t)
+        self.assertIn("BTCUSD: Datos incompletos · faltan: Swap largo, Swap corto", t)
+        self.assertIn("EURUSD: Datos completos · pendiente de validar en SQX", t)
         self.assertIn(tabla.PEND, t)
         self.assertEqual(pdf.nombre_archivo(rs)[-15:], "_INCOMPLETA.pdf")
-        self.assertGreaterEqual(datos.count(b"/Type /Page /Parent"), 3)
+        self.assertGreaterEqual(datos.count(b"/Type /Page /Parent"), 3)  # más páginas si hace falta
+        _, datos = self.generar("BTCUSD")
+        self.assertEqual(datos.count(b"/Type /Page /Parent"), 2)
 
     def test_nombre_archivo(self):
         rs, _ = self.generar("USATECHIDXUSD")

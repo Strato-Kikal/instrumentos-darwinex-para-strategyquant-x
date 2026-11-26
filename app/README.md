@@ -17,7 +17,10 @@ Se basa en la skill «Instrumentos Darwinex para StrategyQuant X» de este repos
 3. Aplica las reglas de la skill, registra cada valor con su fuente y lo valida con `tabla.validar()`. Lo que no tiene evidencia queda **PENDIENTE DE VERIFICAR**.
 4. Muestra los valores (con su origen: dato del bróker, lectura en vivo, cálculo, regla o ajuste personal) y el botón **Descargar PDF**.
 
-El PDF tiene en la página 1 las mismas dos tablas que el PDF de la skill (título, columnas, colores, aviso de tabla incompleta y firma). Las páginas siguientes son un anexo con fuentes, horas de consulta, fórmulas, entradas, perfil, moneda de cuenta y ajustes personales.
+El PDF (A4 apaisado) está pensado para rellenar StrategyQuant X directamente:
+
+- **Página 1**: estado («Datos completos · pendiente de validar en SQX» o «Datos incompletos · faltan: …»), tabla «1. Configuración principal del instrumento» y tabla «2. Comisiones, swaps y rollover» con los nombres de las casillas de SQX (Pip/Tick Size, Pip/Tick Step, Tipo de swap…) y sus unidades: spread como «X pips · lectura puntual» con la hora, comisión como «X USD por lote, ida y vuelta», swaps en USD por lote y día. Separa el rollover de SQX (ajuste del perfil, con la zona horaria de los datos clonados) de la hora a la que Darwinex cobra el swap (17:00 Nueva York = 00:00 del servidor MT5). Debajo, las comprobaciones que faltan dentro de SQX (comisión de 1 lote, operación que cruce el rollover, triple swap).
+- **Página 2**: fuentes y cálculos de cada casilla (origen, fórmula con sus entradas y fechas) con enlaces clicables cortos, horas de consulta, perfil y avisos. Si hay varios símbolos o mucho texto, se añaden páginas.
 
 Alcance, igual que la skill: Darwinex, cuenta en USD, forex, índices, materias primas/metales y cripto. Acciones, ETF y futuros dan un mensaje de «fuera de alcance».
 
@@ -111,20 +114,20 @@ Antes de publicarla para otros usuarios:
 | Aplicar reglas (pip, tick real, comisión × 2, triple swap…) | Claude con `reference/` | `sqx/instrumento.py` |
 | Registrar fuentes (esquema 2) | Claude | `sqx/instrumento.py` |
 | Validar | `tabla.py` | `tabla.py` (el mismo código) |
-| PDF | `tabla.py` + Chrome | `sqx/pdf.py` (misma página 1 + anexo) |
-| Resumen de fuentes para el usuario | Respuesta de Claude | Pantalla de resultados y anexo del PDF |
+| PDF | `tabla.py` + Chrome | `sqx/pdf.py` (página 1 para SQX + página de fuentes) |
+| Resumen de fuentes para el usuario | Respuesta de Claude | Pantalla de resultados y página 2 del PDF |
 
 Decisiones conservadoras (para no inventar valores):
 - **Triple swap**: se usa el código `tripleSwapDay` de Darwinex solo si coincide con la nota publicada de su clase (forex miércoles, USDCAD jueves, índices viernes, metales miércoles; notas leídas el 2026-11-26). XTIUSD y XNGUSD tienen nota propia y quedan pendientes. Cripto no tiene nota: pendiente.
 - **Swaps de cripto**: Darwinex no explica su unidad en la tabla: pendientes.
-- **No Pip/Tick**: si `tick value ÷ contrato` no coincide con el `tickSize` de Darwinex, queda pendiente (hoy ocurre con NI225).
+- **Pip/Tick Step**: si `tick value ÷ contrato` no coincide con el `tickSize` de Darwinex, queda pendiente (hoy ocurre con NI225).
 - **Comisión**: solo se calcula si la página de costes de Darwinex sigue diciendo «displayed per order… 2 orders».
 - Las referencias que no se consultan en cada uso (definición de Point value en el foro de StrategyQuant) llevan su fecha real de verificación (2026-10-27), no la de hoy.
 
 ## Pruebas
 
 ```bash
-python3 -m unittest discover -s app/tests -v   # app (46 pruebas, sin red)
+python3 -m unittest discover -s app/tests -v   # app (50 pruebas, sin red)
 python3 -m unittest discover -s tests -v       # skill (68 pruebas)
 ```
 
@@ -137,7 +140,7 @@ app/
   servidor.py          servidor HTTP (interfaz + API)
   sqx/fuentes.py       consulta de fuentes en vivo
   sqx/instrumento.py   transformación de datos y reglas (antes las aplicaba Claude)
-  sqx/pdf.py           PDF sin dependencias (página 1 de la skill + anexo)
+  sqx/pdf.py           PDF sin dependencias (página 1 para SQX + fuentes y cálculos)
   sqx/metricas.py      anchos de Helvetica para el PDF
   web/                 PWA: index.html, app.js, estilos.css, manifest, service worker, iconos
   tests/               pruebas y datos de prueba

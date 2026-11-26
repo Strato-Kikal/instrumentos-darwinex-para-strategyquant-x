@@ -4,7 +4,8 @@
 
 const TABLA1 = ["nombre", "tipo", "pip_tick", "point_value", "no_pip_tick", "spread",
                 "slippage", "min_dist", "order_mult", "order_step"];
-const TABLA2 = ["modelo_comision", "comision", "swap_largo", "swap_corto", "triple_swap", "rollover"];
+const TABLA2 = ["modelo_comision", "comision", "tipo_swap", "swap_largo", "swap_corto", "triple_swap",
+                "rollover", "cobro_swap"];
 const PEND = "PENDIENTE DE VERIFICAR";
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +37,7 @@ function mensaje(tipo, texto, sugerencias) {
   caja.append(div);
 }
 
-function casillas(destino, campos, detalle) {
+function casillas(destino, campos, detalle, textos) {
   const porCampo = Object.fromEntries(detalle.map((f) => [f.campo, f]));
   const ul = el("ul", "casillas");
   for (const c of campos) {
@@ -46,8 +47,9 @@ function casillas(destino, campos, detalle) {
     const det = el("details");
     const sum = el("summary");
     const pend = f.valor === PEND;
+    const texto = (textos && textos[c]) ? String(textos[c]).replace(/\n/g, " · ") : f.valor;
     sum.append(el("span", "nombre", f.casilla),
-               el("span", "valor" + (pend ? " pend" : ""), f.valor));
+               el("span", "valor" + (pend ? " pend" : ""), texto));
     const meta = el("span", "meta");
     meta.append(el("span", `origen o-${f.tipo}`, f.origen));
     sum.append(meta);
@@ -65,20 +67,23 @@ function mostrar(r) {
   estado.className = `tarjeta estado ${completa ? "completa" : "incompleta"}`;
   const destino = r.ticker_darwinex !== r.simbolo ? ` → Darwinex ${r.ticker_darwinex}` : "";
   estado.replaceChildren(
-    el("span", "titulo", `${r.simbolo}${destino} · ${completa ? "TABLA COMPLETA" : "TABLA INCOMPLETA"}`),
+    el("span", "titulo", `${r.simbolo}${destino} · ${r.estado_texto}`),
     el("span", "linea", `${r.clase} · consultado el ${r.consulta_utc} UTC`),
   );
   if (!completa) {
-    const nombres = Object.fromEntries(r.detalle.map((f) => [f.campo, f.casilla]));
-    estado.append(el("span", "linea",
-      `Pendiente de verificar: ${r.pendientes.map((p) => nombres[p] || p).join(", ")}. ` +
-      "No uses esas casillas en StrategyQuant hasta completarlas."));
+    estado.append(el("span", "linea", "No uses esas casillas en StrategyQuant hasta completarlas."));
   }
   const p = r.perfil;
   $("perfil").textContent = `${p.nombre} · Bróker ${p.broker} · ${p.plataforma} · Cuenta en ${p.divisa_cuenta} · ` +
     `Datos ${p.datos.proveedor} («${p.datos.broker_profile_descarga}») clonados a «${p.datos.zona_clon}».`;
-  casillas($("tabla1"), TABLA1, r.detalle);
-  casillas($("tabla2"), TABLA2, r.detalle);
+  casillas($("tabla1"), TABLA1, r.detalle, r.textos);
+  casillas($("tabla2"), TABLA2, r.detalle, r.textos);
+
+  const pruebas = $("pruebas");
+  pruebas.replaceChildren();
+  if (r.pendientes.length) pruebas.append(el("li", "aviso-linea", `Faltan datos: ${r.faltan.join(", ")}.`));
+  for (const t of r.pruebas_sqx) pruebas.append(el("li", "", t));
+  pruebas.append(el("li", "", "Compara también cada valor con MT5 → Observación del mercado → Especificación."));
 
   const cons = $("consultas");
   cons.replaceChildren();

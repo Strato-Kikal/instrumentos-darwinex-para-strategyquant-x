@@ -65,7 +65,7 @@ class TestCompletas(unittest.TestCase):
         t = preparar("NDX")["tabla"]
         self.assertEqual((t["pip_tick"], t["no_pip_tick"], t["point_value"], t["comision"], t["triple_swap"]),
                          ("1", "0.1", "10", "5.50", "FRIDAY"))
-        self.assertEqual(t["fuentes"]["no_pip_tick"]["formula"], "tick real = tick_value ÷ contrato")
+        self.assertEqual(t["fuentes"]["no_pip_tick"]["formula"], "tick real (Pip/Tick Step) = tick_value ÷ contrato")
 
     def test_dukascopy(self):
         r = preparar("usatechidxusd")
@@ -84,16 +84,59 @@ class TestCompletas(unittest.TestCase):
                          ("Comisión en porcentaje", "0.005", "0.01", "0.01", "100"))
 
 
+class TestTextosParaSQX(unittest.TestCase):
+    """Página 1: valores con su unidad, tal como se copian en SQX."""
+
+    def test_forex(self):
+        r = preparar("EURUSD")
+        t = r["textos"]
+        self.assertEqual(r["estado_texto"], "Datos completos · pendiente de validar en SQX")
+        self.assertEqual((t["pip_tick"], t["no_pip_tick"], t["point_value"]), ("0.0001", "0.00001", "100000"))
+        self.assertRegex(t["spread"], r"^0\.5 pips · lectura puntual\n\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$")
+        self.assertRegex(t["comision"], r"^\d+\.\d{2} USD por lote, ida y vuelta\naprox\. · cambio BCE "
+                                        r"del \d{4}-\d{2}-\d{2}$")
+        self.assertEqual(t["tipo_swap"], "Dinero / Money\nUSD por lote y día")
+        self.assertEqual((t["swap_largo"], t["swap_corto"]), ("-8.30", "1.30"))
+        self.assertEqual(t["rollover"], "23:59 · ajuste del perfil\nDatos: (EST+07) New York Trading "
+                                        "hours, US DST")
+        self.assertEqual(t["cobro_swap"], "17:00 Nueva York\n= 00:00 servidor MT5")
+        self.assertIn("metatrader-time", r["fila_pdf"] and
+                      [f for f in r["detalle"] if f["campo"] == "cobro_swap"][0]["explicacion"])
+        pruebas = " ".join(r["pruebas_sqx"])
+        for esperado in ("1 lote", "23:59", "-8.30 USD por lote", "WEDNESDAY"):
+            self.assertIn(esperado, pruebas)
+
+    def test_indice_en_eur_y_metal(self):
+        r = preparar("GDAXI")
+        t = r["textos"]
+        self.assertEqual(t["cobro_swap"], "Al cierre del mercado")
+        self.assertRegex(t["swap_largo"], r"^-?\d+\.\d{2}\naprox\. · BCE \d{4}-\d{2}-\d{2}$")
+        self.assertIn("FRIDAY", " ".join(r["pruebas_sqx"]))
+        t = preparar("XAUUSD")["textos"]
+        self.assertEqual(t["comision"], "0.005 % del valor, ida y vuelta")
+        self.assertEqual(t["swap_largo"], "-50.70")
+
+    def test_etiquetas_de_sqx(self):
+        nombres = {f["campo"]: f["casilla"] for f in preparar("EURUSD")["detalle"]}
+        self.assertEqual((nombres["pip_tick"], nombres["no_pip_tick"]), ("Pip/Tick Size", "Pip/Tick Step"))
+        self.assertEqual(nombres["rollover"], "Rollover (SQX)")
+
+
 class TestPendientes(unittest.TestCase):
     def test_petroleo_nota_propia(self):
         r = preparar("XTIUSD")
-        self.assertEqual(r["pendientes"], ["triple_swap"])
+        self.assertEqual(r["pendientes"], ["triple_swap", "cobro_swap"])
+        self.assertEqual(r["faltan"], ["Triple swap", "Cobro del swap (Darwinex)"])
+        self.assertEqual(r["fila_pdf"]["tipo_swap"], "Dinero / Money")
         self.assertIn("swaps-xtiusd-xngusd", r["tabla"]["fuentes"]["triple_swap"]["motivo"])
 
     def test_cripto_swaps_y_triple(self):
         r = preparar("BTCUSD")
         self.assertEqual(r["estado"], "INCOMPLETA")
-        self.assertEqual(set(r["pendientes"]), {"swap_largo", "swap_corto", "triple_swap"})
+        self.assertEqual(set(r["pendientes"]), {"swap_largo", "swap_corto", "triple_swap", "tipo_swap",
+                                                "cobro_swap"})
+        self.assertTrue(r["estado_texto"].startswith("Datos incompletos · faltan: Swap largo, "))
+        self.assertEqual(r["textos"]["comision"], "0.1 % del valor, ida y vuelta")
 
     def test_discrepancia_en_datos_de_darwinex(self):
         r = preparar("NI225")  # tickValue ÷ contrato no coincide con tickSize
@@ -108,10 +151,11 @@ class TestPendientes(unittest.TestCase):
                     x["tripleSwapDay"] = None
                     del x["commission"]
         r = preparar("EURUSD", sustituir={URL_DARWINEX: darwinex_modificado(quitar)})
-        self.assertEqual(set(r["pendientes"]), {"swap_largo", "triple_swap", "comision"})
+        self.assertEqual(set(r["pendientes"]), {"swap_largo", "triple_swap", "comision", "tipo_swap"})
         for k in r["pendientes"]:
-            self.assertEqual(r["tabla"][k], tabla.PEND)
-            self.assertTrue(r["tabla"]["fuentes"][k]["motivo"])
+            self.assertEqual(r["fila_pdf"][k], tabla.PEND)
+            fuente = [f for f in r["detalle"] if f["campo"] == k][0]["fuente"]
+            self.assertTrue(fuente["motivo"])
 
     def test_triple_que_no_cuadra_con_la_nota(self):
         def cambiar(d):
@@ -143,7 +187,8 @@ class TestFallosDeFuentes(unittest.TestCase):
         r = preparar("EURUSD", fallos=[URL_BCE])
         self.assertEqual(r["pendientes"], ["comision"])  # EUR → USD; el resto va en USD
         r = preparar("GDAXI", fallos=[URL_BCE])
-        self.assertEqual(set(r["pendientes"]), {"point_value", "comision", "swap_largo", "swap_corto"})
+        self.assertEqual(set(r["pendientes"]), {"point_value", "comision", "swap_largo", "swap_corto",
+                                                "tipo_swap"})
 
     def test_bce_no_hace_falta_en_usd(self):
         r = preparar("NDX", fallos=[URL_BCE])
