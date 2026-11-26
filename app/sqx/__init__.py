@@ -15,4 +15,4 @@ if str(RAIZ / "scripts") not in sys.path:
 import tabla  # noqa: E402  (scripts/tabla.py de la skill)
 
 NOMBRE = "Instrumentos SQX"
-VERSION = "0.1.0"
+VERSION = "2.2.0"
