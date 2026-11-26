@@ -1,5 +1,13 @@
 # Cambios
 
+## Sin publicar: aplicación «Instrumentos SQX» (rama `app-independiente`)
+
+- Nueva carpeta `app/`: aplicación web instalable (PWA) y servidor en Python (solo biblioteca estándar) que preparan la tabla de un símbolo sin Claude: consultan Darwinex, el feed de spread, el BCE y la página de costes de Darwinex, aplican las reglas de `reference/`, validan con `tabla.validar()` y generan el PDF (página 1 igual que la de la skill + anexo de fuentes, fechas, fórmulas y ajustes). Ver `app/README.md`.
+- 50 pruebas nuevas en `app/tests/` y un paso más en GitHub Actions.
+- Revisión del PDF de la app (comprobada con GBPUSD y NDX en vivo el 2026-11-26): página 1 para rellenar SQX directamente (Pip/Tick Size y Pip/Tick Step; Tipo de swap «Dinero / Money» en USD por lote y día; comisión «X USD por lote, ida y vuelta» con la fecha del cambio del BCE; spread «X pips · lectura puntual» con la hora; rollover 23:59 como ajuste del perfil con la zona de los datos, separado del cobro de Darwinex a las 17:00 NY = 00:00 servidor MT5; estado «Datos completos · pendiente de validar en SQX» o lista de lo que falta; comprobaciones pendientes en SQX bajo las tablas). Página 2 con fuentes, fórmulas y enlaces clicables; sin la tercera página casi vacía. El PDF de la skill (`tabla.py`) no cambia.
+- Icono de la app: el texto pasa de «SQX» a «ISQX» (mismos colores y estilo; letras ajustadas para leerse en tamaños pequeños). El nombre de la app sigue siendo «Instrumentos SQX».
+- La skill no cambia: `SKILL.md`, `scripts/tabla.py`, `config/`, `reference/`, `guias/`, `examples/` y `tests/` quedan igual.
+
 ## 2.1.0 (2026-11-26)
 
 - **Nuevo nombre**: «Instrumentos Darwinex para StrategyQuant X». El comando pasa a ser `/instrumentos-darwinex-para-strategyquant-x` (antes `/strategyquant-darwinex`) y la carpeta de la skill, `~/.claude/skills/instrumentos-darwinex-para-strategyquant-x`. La carpeta de datos (`~/strategyquant-darwinex-datos`) y las variables `SQD_*` no cambian.

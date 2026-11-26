@@ -4,6 +4,8 @@
 
 Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolos para **StrategyQuant X (build 143)** con el bróker **Darwinex**: Pip/Tick, Point Value, tick real, spread actual, comisión, swaps y triple swap. Cada dato lleva su fuente y su fecha, y cada cálculo su fórmula y sus entradas.
 
+> **Nuevo: aplicación independiente «Instrumentos SQX»** (en pruebas, carpeta [`app/`](app/README.md)). Hace lo mismo sin Claude Code, sin cuentas de IA ni claves API: una web instalable (PWA) para móvil y ordenador con un pequeño servidor en Python que consulta las fuentes, aplica las reglas de la skill, valida con `tabla.py` y genera el PDF. La skill sigue funcionando igual.
+
 ## Cómo se reparte el trabajo
 
 | Quién | Qué hace |
@@ -116,6 +118,7 @@ guias/                   descarga y clonado en build 143; control de coherencia
 templates/confirmado.md  plantilla para guardar lo confirmado con capturas
 examples/                tablas de ejemplo (2026-10-27)
 tests/test_tabla.py      pruebas (unittest)
+app/                     aplicación independiente «Instrumentos SQX» (PWA + servidor; ver app/README.md)
 .github/workflows/       pruebas automáticas en GitHub Actions
 LICENSE                  licencia MIT
 ```
