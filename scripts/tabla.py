@@ -652,11 +652,12 @@ def candidatos_navegador(sistema=None, entorno=None, home=None):
     """Rutas habituales de navegadores Chromium en macOS, Windows y Linux, por orden de preferencia."""
     sistema = sistema or platform.system()
     env = os.environ if entorno is None else entorno
-    home = Path(home) if home else Path.home()
+    home = str(home) if home else str(Path.home())
     rutas = []
     if sistema == "Darwin":
         apps = ["Google Chrome", "Chromium", "Microsoft Edge", "Brave Browser"]
-        for base in ("/Applications", str(home / "Applications")):
+        # Rutas de macOS siempre con «/», aunque se calculen en otro sistema (p. ej., en pruebas)
+        for base in ("/Applications", home.rstrip("/") + "/Applications"):
             rutas += [f"{base}/{a}.app/Contents/MacOS/{a}" for a in apps]
     elif sistema == "Windows":
         rel = [r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe",

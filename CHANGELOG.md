@@ -5,6 +5,7 @@
 - **Nuevo nombre**: «Instrumentos Darwinex para StrategyQuant X». El comando pasa a ser `/instrumentos-darwinex-para-strategyquant-x` (antes `/strategyquant-darwinex`) y la carpeta de la skill, `~/.claude/skills/instrumentos-darwinex-para-strategyquant-x`. La carpeta de datos (`~/strategyquant-darwinex-datos`) y las variables `SQD_*` no cambian.
 - **Acumulado**: si alguna tabla guardada no es válida (p. ej., formato v1) y queda fuera, el acumulado anterior se guarda como `Tablas_<bróker>_todas_anterior_<fecha_hora>.pdf` antes de sustituirlo. Antes se sobrescribía sin copia y se perdían las tablas excluidas. 2 pruebas nuevas (68 en total).
 - **Windows**: la salida de `tabla.py` va siempre en UTF-8. Antes, al leerla otro programa (Claude, Git Bash, las pruebas), salía en cp1252 y los acentos y símbolos (✗, ·) llegaban dañados.
+- Las rutas de navegadores de macOS se construyen siempre con «/», también al calcularlas en otro sistema (la prueba fallaba en Windows).
 - **Publicación en GitHub**: instalación con `git clone` en el README, GitHub Actions que ejecuta las pruebas con Python 3.8 a 3.13 en Linux, macOS y Windows, e insignia de CI.
 - `reference/tabla-reglas.md`: triple swap de metales comprobado (WEDNESDAY, nota de Darwinex del 2026-11-26); XTIUSD y XNGUSD remiten a su nota propia.
 - README: nuevas limitaciones (feed de spread no documentado; cuentas de Forex y CFD de Darwinex no disponibles para nuevos clientes minoristas en España, según su web) y sistemas probados a mano frente a CI.
