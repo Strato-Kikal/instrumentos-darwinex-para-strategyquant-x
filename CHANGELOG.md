@@ -1,6 +1,6 @@
 # Cambios
 
-## Sin publicar: aplicación «Instrumentos SQX» (rama `app-independiente`)
+## 2.2.0 (2026-11-27): aplicación «Instrumentos SQX»
 
 - Nueva carpeta `app/`: aplicación web instalable (PWA) y servidor en Python (solo biblioteca estándar) que preparan la tabla de un símbolo sin Claude: consultan Darwinex, el feed de spread, el BCE y la página de costes de Darwinex, aplican las reglas de `reference/`, validan con `tabla.validar()` y generan el PDF (página 1 igual que la de la skill + anexo de fuentes, fechas, fórmulas y ajustes). Ver `app/README.md`.
 - 50 pruebas nuevas en `app/tests/` y un paso más en GitHub Actions.
