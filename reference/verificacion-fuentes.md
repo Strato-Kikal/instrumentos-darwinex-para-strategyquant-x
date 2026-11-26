@@ -1,0 +1,25 @@
+# Verificación con la documentación oficial (2026-10-27)
+
+Contraste de unidades, spread y comisiones con fuentes oficiales, consultadas el 2026-10-27 sin caché. **Verificado** = lo dice una fuente oficial. **Parcial** = lo dice personal de la empresa, pero no la documentación formal. **Pendiente** = sin evidencia suficiente.
+
+| Punto | Estado | Evidencia |
+|---|---|---|
+| Spread de StrategyQuant en **pips**, y pip = `Pip/Tick size` | Verificado | «Spread: Define the Bid–Ask difference in pips» (strategyquant.com/doc/data-settings/, act. 2026-04). «Default spread of the instrument in pips»; «Pip/Tick size … what number is 1 pip … 0.0001, JPY 0.01» (strategyquant.com/doc/import-history-data-metatrader-4/) |
+| `Pip/Tick step` = movimiento mínimo del precio (tick real) | Verificado | «Pip/Tick Step is a value by how much one pip can move … 5-digit data → 0.00001 (0.001 JPY)» (doc import MT4). En el foro, un usuario lo explica como «minimum move in price in my broker» y que un spread de 41 puntos de MT5 en GBPJPY son 4.1 pips en SQ; un administrador da esa explicación por «almost correct» y solo corrige order size multiplier y point value |
+| Point value = valor en USD de un movimiento de 1.0 del precio con 1 lote | Parcial | Administrador de SQ (tomas262) en strategyquant.com/forum/topic/deep-explanation-of-instrument-specifications-pip-tick-size-step-value-etc/: «monetary value for a whole number price move … per 1 lot». La doc antigua de importación MT4 dice «usually 10», que corresponde a otra definición: la descartamos |
+| Swap «money» en USD por lote y día | Verificado | Fórmula «Money: Swap = Lot Size × Swap Rate × Days» (doc data-settings) |
+| Darwinex publica la comisión **por orden** (2 órdenes por operación) | Verificado | «commissions are displayed per order, a trade would be composed of 2 orders: entry order and close order» (help.darwinex.com/execution-costs) |
+| StrategyQuant aplica la comisión **ida y vuelta** | Parcial | Administrador de SQ (tomas262), strategyquant.com/forum/topic/commission-setting/: «What you set as commission is calculated as round-turn (for both sides). Set 7 USD size based» para 3.5 USD por orden. **No hay** página formal de documentación que lo diga, ni confirmación específica de la build 143 |
+| Comisión en porcentaje ida y vuelta | Parcial | Misma respuesta del foro (habla de la comisión en general) |
+| Dukascopy llega en UTC y hay que clonarlo a la hora del bróker | Verificado | strategyquant.com/blog/preparing-accurate-data-for-algo-trading-broker-data-feed-differences/ (consultado 2026-10-19) |
+
+## Decisión aplicada
+
+La skill pone en SQ la comisión por orden × 2. Hay una base suficiente: Darwinex documenta el «por orden» y un administrador de StrategyQuant dice que SQ trata el valor como ida y vuelta. Lo que no queda cerrado es si la **build 143** se comporta así, porque la documentación formal no lo dice.
+
+**PENDIENTE DE VERIFICAR (una sola vez, en StrategyQuant build 143):** haz un backtest con una sola operación de 1 lote y la comisión de un símbolo (p. ej., NDX 5.50). En la lista de operaciones, la comisión cobrada debe ser 5.50 (ida y vuelta). Si sale 11.00, SQ cobra por lado: cambia `FACTOR_IDA_VUELTA` a 1 en `scripts/tabla.py` y avisa en el CHANGELOG.
+
+## Otros puntos pendientes
+
+- La captura de la ventana de clonado de build 143 (nombre exacto de la zona EST+07 en el desplegable): ver guias/descarga-y-clonacion.md.
+- La build 144 ya importa directamente desde MT5 el tick size, el point value y el spread (strategyquant.com/doc/metatrader5-data-import/, act. 2026-04-30). La skill sigue orientada a la build 143.

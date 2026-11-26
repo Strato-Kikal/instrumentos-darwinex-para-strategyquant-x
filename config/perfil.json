@@ -1,0 +1,20 @@
+{
+  "esquema": 1,
+  "nombre": "Kike Argandona (perfil predeterminado)",
+  "broker": "Darwinex",
+  "plataforma": "MT5",
+  "divisa_cuenta": "USD",
+  "datos": {
+    "proveedor": "Dukascopy",
+    "broker_profile_descarga": "SQ default",
+    "zona_clon": "(EST+07) New York Trading hours, US DST"
+  },
+  "ajustes_personales": {
+    "slippage": "0",
+    "min_dist": "0",
+    "order_mult": "1",
+    "order_step": "0.01",
+    "rollover": "23:59"
+  },
+  "sufijo_nombre": "_Darwinex"
+}

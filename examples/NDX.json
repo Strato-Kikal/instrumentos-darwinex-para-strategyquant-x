@@ -1,0 +1,42 @@
+{
+  "esquema": 2,
+  "simbolo": "NDX",
+  "consulta": "2026-10-27",
+  "creada": "2026-10-27",
+  "nombre": "NDX_Darwinex",
+  "tipo": "Index",
+  "pip_tick": "1",
+  "point_value": "10",
+  "no_pip_tick": "0.1",
+  "spread": "1.1",
+  "modelo_comision": "En función del tamaño",
+  "comision": "5.50",
+  "swap_largo": "-47.14",
+  "swap_corto": "20.84",
+  "triple_swap": "FRIDAY",
+  "fuentes": {
+    "nombre": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27", "nota": "ticker NDX + sufijo del perfil"},
+    "tipo": {"tipo": "regla", "regla": "índices = Index", "referencia": "reference/tabla-reglas.md"},
+    "pip_tick": {"tipo": "regla", "regla": "índices: 1 punto", "referencia": "reference/tabla-reglas.md (convenciones de la skill)"},
+    "point_value": {"tipo": "calculo", "formula": "contrato × 1.0 punto (cotizado en USD, sin conversión)",
+      "entradas": [
+        {"nombre": "contrato", "valor": "10", "unidad": "× NDX", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"}
+      ]},
+    "no_pip_tick": {"tipo": "calculo", "formula": "tick real = tick_value ÷ contrato",
+      "entradas": [
+        {"nombre": "tick_value", "valor": "1", "unidad": "USD", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"},
+        {"nombre": "contrato", "valor": "10", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"}
+      ]},
+    "spread": {"tipo": "observado", "url": "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s=NDX", "fecha": "2026-10-27", "hora_utc": "08:18", "unidad": "precio", "lectura": "1.1", "nota": "ask 29223.3 − bid 29222.2"},
+    "modelo_comision": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27", "nota": "importe fijo por contrato y orden → En función del tamaño"},
+    "comision": {"tipo": "calculo", "formula": "comision_por_orden × 2 (ida y vuelta)",
+      "entradas": [
+        {"nombre": "comision_por_orden", "valor": "2.75", "unidad": "USD por lote", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"},
+        {"nombre": "órdenes por operación", "valor": "2", "url": "https://help.darwinex.com/execution-costs", "fecha": "2026-10-27"}
+      ]},
+    "swap_largo": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"},
+    "swap_corto": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"},
+    "triple_swap": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27", "nota": "«in triple size on Fridays»"}
+  },
+  "notas": ["Ejemplo con datos reales del 2026-10-27 08:18 UTC. No lo copies: vuelve a consultarlo."]
+}

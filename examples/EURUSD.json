@@ -1,0 +1,44 @@
+{
+  "esquema": 2,
+  "simbolo": "EURUSD",
+  "consulta": "2026-10-27",
+  "creada": "2026-10-27",
+  "nombre": "EURUSD_Darwinex",
+  "tipo": "Forex",
+  "pip_tick": "0.0001",
+  "point_value": "100000",
+  "no_pip_tick": "0.00001",
+  "spread": "0.4",
+  "modelo_comision": "En función del tamaño",
+  "comision": "5.59 aprox.",
+  "swap_largo": "-8.30",
+  "swap_corto": "1.10",
+  "triple_swap": "WEDNESDAY",
+  "fuentes": {
+    "nombre": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "nota": "ticker EURUSD + sufijo del perfil (_Darwinex)"},
+    "tipo": {"tipo": "regla", "regla": "pares de divisas = Forex", "referencia": "reference/tabla-reglas.md (convenciones de la skill)"},
+    "pip_tick": {"tipo": "regla", "regla": "forex 0.0001 (0.01 si cotiza en JPY)", "referencia": "https://strategyquant.com/doc/import-history-data-metatrader-4/"},
+    "point_value": {"tipo": "calculo", "formula": "contrato × 1.0 de precio (cotizado en USD, sin conversión)",
+      "entradas": [
+        {"nombre": "contrato", "valor": "100000", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27"},
+        {"nombre": "definición de Point value", "valor": "valor en USD de un movimiento de 1.0 con 1 lote", "url": "https://strategyquant.com/forum/topic/deep-explanation-of-instrument-specifications-pip-tick-size-step-value-etc/", "fecha": "2026-10-27"}
+      ]},
+    "no_pip_tick": {"tipo": "calculo", "formula": "Pip/Tick ÷ 10 (Darwinex cotiza el forex con 5 decimales, 3 en JPY)",
+      "entradas": [
+        {"nombre": "pip_tick", "valor": "0.0001", "campo": "pip_tick"},
+        {"nombre": "decimales de Darwinex en forex", "valor": "5", "url": "https://darwinexzero.document360.io/docs/calculate-pip-and-tick-value", "fecha": "2026-10-27"}
+      ]},
+    "spread": {"tipo": "observado", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "hora_utc": "08:19", "unidad": "pips", "lectura": "0.4", "nota": "columna «Current spread»"},
+    "modelo_comision": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "nota": "importe fijo por contrato y orden (2.5 en la divisa base) → En función del tamaño"},
+    "comision": {"tipo": "calculo", "formula": "comision_por_orden × 2 (ida y vuelta) × EURUSD",
+      "entradas": [
+        {"nombre": "comision_por_orden", "valor": "2.5", "unidad": "EUR por lote", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27"},
+        {"nombre": "órdenes por operación", "valor": "2", "url": "https://help.darwinex.com/execution-costs", "fecha": "2026-10-27"},
+        {"nombre": "tipo_cambio EURUSD", "valor": "1.1188", "url": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html", "fecha": "2026-10-26"}
+      ]},
+    "swap_largo": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "nota": "USD por contrato y día; lectura del día"},
+    "swap_corto": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "nota": "USD por contrato y día; lectura del día"},
+    "triple_swap": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/forex", "fecha": "2026-10-27", "nota": "«Wednesday swaps are charged in triple size»"}
+  },
+  "notas": ["Ejemplo con datos reales del 2026-10-27 08:19 UTC. Spread y swaps cambian: no lo copies, vuelve a consultarlo."]
+}
