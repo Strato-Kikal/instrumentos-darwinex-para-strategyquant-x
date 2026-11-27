@@ -6,13 +6,18 @@ import datetime as dt
 import json
 import unittest
 
-from apoyo import PERFIL, darwinex_modificado, fuentes_simuladas, tabla
+from apoyo import FXB, PERFIL, darwinex_modificado, fuentes_simuladas, tabla
 from sqx import instrumento as I
 from sqx.fuentes import URL_BCE, URL_COSTES, URL_DARWINEX, FuenteError
 
+COMO_FXB = object()
 
-def preparar(simbolo, **kw):
-    return I.preparar(simbolo, fuentes_simuladas(**kw), PERFIL)
+
+def preparar(simbolo, medio=COMO_FXB, hasta=None, **kw):
+    """Por defecto, con el spread medio real de Forex Benchmark que copiaría el usuario."""
+    if medio is COMO_FXB:
+        medio = FXB.get(simbolo.upper())
+    return I.preparar(simbolo, fuentes_simuladas(**kw), PERFIL, medio, hasta)
 
 
 class TestCompletas(unittest.TestCase):
@@ -23,7 +28,9 @@ class TestCompletas(unittest.TestCase):
         self.assertEqual((t["tipo"], t["pip_tick"], t["no_pip_tick"], t["point_value"]),
                          ("Forex", "0.0001", "0.00001", "100000"))
         self.assertEqual((t["swap_largo"], t["swap_corto"], t["triple_swap"]), ("-8.30", "1.30", "WEDNESDAY"))
-        self.assertEqual(t["spread"], "0.5")  # 1.09712 − 1.09707 = 0.00005 → 0.5 pips
+        self.assertEqual(t["spread"], "0.42")  # spread medio de Forex Benchmark
+        self.assertEqual(t["fuentes"]["spread"]["tipo"], "promedio")
+        self.assertEqual(t["spread_instantaneo"], "0.5")  # 1.09712 − 1.09707 = 0.00005 → 0.5 pips
         # Comisión 2.5 EUR por orden × 2 × EURUSD del BCE
         self.assertTrue(t["comision"].endswith(" aprox."))
         eurusd = [e for e in t["fuentes"]["comision"]["entradas"] if e["nombre"] == "tipo_cambio EURUSD"][0]
@@ -57,6 +64,7 @@ class TestCompletas(unittest.TestCase):
         self.assertTrue(t["point_value"].endswith(" aprox."))
         self.assertEqual(t["comision"], "5.00")  # 2.5 USD (divisa base) × 2, sin conversión
         self.assertTrue(t["swap_largo"].endswith(" aprox."))
+        self.assertEqual((t["spread"], t["fuentes"]["spread"]["pip_fuente"]), ("0.98", "0.01"))
 
     def test_usdcad_triple_jueves(self):
         self.assertEqual(preparar("USDCAD")["tabla"]["triple_swap"], "THURSDAY")
@@ -92,7 +100,9 @@ class TestTextosParaSQX(unittest.TestCase):
         t = r["textos"]
         self.assertEqual(r["estado_texto"], "Datos completos · pendiente de validar en SQX")
         self.assertEqual((t["pip_tick"], t["no_pip_tick"], t["point_value"]), ("0.0001", "0.00001", "100000"))
-        self.assertRegex(t["spread"], r"^0\.5 pips · lectura puntual\n\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$")
+        self.assertEqual(t["spread"], "0.42 pips\nmedio 30 días · 24 h")
+        self.assertRegex(t["spread_instantaneo"], r"^0\.5 pips · \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC · no va en SQX$")
+        self.assertIn(tabla.ETIQUETA_SPREAD, r["spread_lineas"][0])
         self.assertRegex(t["comision"], r"^\d+\.\d{2} USD por lote, ida y vuelta\naprox\. · cambio BCE "
                                         r"del \d{4}-\d{2}-\d{2}$")
         self.assertEqual(t["tipo_swap"], "Dinero / Money\nUSD por lote y día")
@@ -103,7 +113,7 @@ class TestTextosParaSQX(unittest.TestCase):
         self.assertIn("metatrader-time", r["fila_pdf"] and
                       [f for f in r["detalle"] if f["campo"] == "cobro_swap"][0]["explicacion"])
         pruebas = " ".join(r["pruebas_sqx"])
-        for esperado in ("1 lote", "23:59", "-8.30 USD por lote", "WEDNESDAY"):
+        for esperado in ("1 lote", "23:59", "-8.30 USD por lote", "WEDNESDAY", "0.42 pips (spread medio"):
             self.assertIn(esperado, pruebas)
 
     def test_indice_en_eur_y_metal(self):
@@ -120,22 +130,85 @@ class TestTextosParaSQX(unittest.TestCase):
         nombres = {f["campo"]: f["casilla"] for f in preparar("EURUSD")["detalle"]}
         self.assertEqual((nombres["pip_tick"], nombres["no_pip_tick"]), ("Pip/Tick Size", "Pip/Tick Step"))
         self.assertEqual(nombres["rollover"], "Rollover (SQX)")
+        self.assertEqual((nombres["spread"], nombres["spread_instantaneo"]),
+                         ("Default Spread", "Spread instantáneo (informativo)"))
+
+
+class TestSpreadMedio(unittest.TestCase):
+    """Default Spread = spread medio de Forex Benchmark; el instantáneo, solo informativo."""
+
+    def test_oro_en_pips_de_001(self):
+        t = preparar("XAUUSD")["tabla"]
+        self.assertEqual((t["spread"], t["fuentes"]["spread"]["pip_fuente"]), ("48.23", "0.01"))
+        self.assertEqual(t["spread_instantaneo"], "41")  # 0.41 USD de precio
+
+    def test_criterio_registrado(self):
+        f = preparar("EURUSD")["tabla"]["fuentes"]["spread"]
+        for k, v in tabla.CRITERIO_SPREAD.items():
+            self.assertEqual(f[k], v, k)
+        self.assertEqual(f["url"], tabla.URL_FXB)
+        self.assertNotIn("datos_hasta", f)  # no se inventa la fecha final del periodo
+
+    def test_fecha_final_del_periodo_distinta_de_la_consulta(self):
+        ayer = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
+        r = preparar("EURUSD", hasta=ayer)
+        f = r["tabla"]["fuentes"]["spread"]
+        self.assertEqual(f["datos_hasta"], ayer)
+        self.assertNotEqual(f["fecha"], f["datos_hasta"])
+        self.assertIn(f"30 días hasta el {ayer}", r["spread_lineas"][0])
+
+    def test_sin_valor_queda_pendiente_y_no_usa_el_instantaneo(self):
+        r = preparar("EURUSD", medio="")
+        self.assertEqual((r["estado"], r["pendientes"]), ("INCOMPLETA", ["spread"]))
+        self.assertIn("falta el spread medio de EURUSD: cópialo", r["tabla"]["fuentes"]["spread"]["motivo"])
+        self.assertEqual(r["tabla"]["spread_instantaneo"], "0.5")  # se informa, pero no sustituye
+
+    def test_simbolo_sin_cobertura(self):
+        for s in ("NDX", "XTIUSD", "BTCUSD"):
+            r = preparar(s, medio="1.5")
+            self.assertIn("spread", r["pendientes"], s)
+            motivo = r["tabla"]["fuentes"]["spread"]["motivo"]
+            self.assertIn("Forex Benchmark no publica", motivo)
+            self.assertIn("Alternativas, sin aplicar", motivo)
+            self.assertTrue(any("no se usa" in a for a in r["avisos"]), s)
+            self.assertFalse(r["forex_benchmark"]["cubre"])
+
+    def test_entrada_del_usuario(self):
+        self.assertEqual(preparar("EURUSD", medio="0,42")["tabla"]["spread"], "0.42")
+        self.assertEqual(preparar("EURUSD", medio="0.4233")["tabla"]["spread"], "0.42")
+        for malo in ("abc", "0", "-1", "1e3", "0.42 pips"):
+            with self.assertRaises(I.ErrorEntrada, msg=malo):
+                preparar("EURUSD", medio=malo)
+        for mala in ("2026-13-01", "ayer", "2999-01-01"):
+            with self.assertRaises(I.ErrorEntrada, msg=mala):
+                preparar("EURUSD", hasta=mala)
+
+    def test_aviso_si_parece_mal_copiado(self):
+        r = preparar("EURUSD", medio="42")
+        self.assertEqual(r["estado"], "COMPLETA")
+        self.assertTrue(any("bien copiado" in a for a in r["avisos"]))
+
+    def test_comision_aparte_del_spread(self):
+        r = preparar("EURUSD")
+        self.assertEqual(r["tabla"]["fuentes"]["spread"]["comision"], "excluida")
+        self.assertIn("no se suma al spread", " ".join([tabla.ETIQUETA_SPREAD] + r["pruebas_sqx"])
+                      .replace("no la cobra dos veces", "no se suma al spread"))
 
 
 class TestPendientes(unittest.TestCase):
     def test_petroleo_nota_propia(self):
         r = preparar("XTIUSD")
-        self.assertEqual(r["pendientes"], ["triple_swap", "cobro_swap"])
-        self.assertEqual(r["faltan"], ["Triple swap", "Cobro del swap (Darwinex)"])
+        self.assertEqual(r["pendientes"], ["spread", "triple_swap", "cobro_swap"])
+        self.assertEqual(r["faltan"], ["Default Spread", "Triple swap", "Cobro del swap (Darwinex)"])
         self.assertEqual(r["fila_pdf"]["tipo_swap"], "Dinero / Money")
         self.assertIn("swaps-xtiusd-xngusd", r["tabla"]["fuentes"]["triple_swap"]["motivo"])
 
     def test_cripto_swaps_y_triple(self):
         r = preparar("BTCUSD")
         self.assertEqual(r["estado"], "INCOMPLETA")
-        self.assertEqual(set(r["pendientes"]), {"swap_largo", "swap_corto", "triple_swap", "tipo_swap",
-                                                "cobro_swap"})
-        self.assertTrue(r["estado_texto"].startswith("Datos incompletos · faltan: Swap largo, "))
+        self.assertEqual(set(r["pendientes"]), {"spread", "swap_largo", "swap_corto", "triple_swap",
+                                                "tipo_swap", "cobro_swap"})
+        self.assertTrue(r["estado_texto"].startswith("Datos incompletos · faltan: Default Spread, Swap largo, "))
         self.assertEqual(r["textos"]["comision"], "0.1 % del valor, ida y vuelta")
 
     def test_discrepancia_en_datos_de_darwinex(self):
@@ -173,33 +246,36 @@ class TestFallosDeFuentes(unittest.TestCase):
         self.assertEqual(e.exception.fuente, "Darwinex")
 
     def test_feed_de_spread_caido(self):
-        r = preparar("NDX", fallos=["https://widgets.fxbluelabs.com"])
-        self.assertEqual(r["pendientes"], ["spread"])
-        self.assertTrue(any("spread" in a for a in r["avisos"]))
+        # El instantáneo es solo informativo: si falla, Default Spread no cambia
+        r = preparar("EURUSD", fallos=["https://widgets.fxbluelabs.com"])
+        self.assertEqual((r["estado"], r["tabla"]["spread"]), ("COMPLETA", "0.42"))
+        self.assertNotIn("spread_instantaneo", r["tabla"])
+        self.assertTrue(any("spread instantáneo" in a for a in r["avisos"]))
         self.assertIn("fallo", [c["estado"] for c in r["consultas"]])
 
     def test_feed_sin_datos_del_simbolo(self):
-        sin = b'{"symbols":[{"symbol":"NDX","noData":true}]}'
-        r = preparar("NDX", sustituir={"https://widgets.fxbluelabs.com": sin})
-        self.assertEqual(r["pendientes"], ["spread"])
+        sin = b'{"symbols":[{"symbol":"EURUSD","noData":true}]}'
+        r = preparar("EURUSD", sustituir={"https://widgets.fxbluelabs.com": sin})
+        self.assertEqual(r["estado"], "COMPLETA")
+        self.assertNotIn("spread_instantaneo", r["tabla"])
 
     def test_bce_caido(self):
         r = preparar("EURUSD", fallos=[URL_BCE])
         self.assertEqual(r["pendientes"], ["comision"])  # EUR → USD; el resto va en USD
         r = preparar("GDAXI", fallos=[URL_BCE])
-        self.assertEqual(set(r["pendientes"]), {"point_value", "comision", "swap_largo", "swap_corto",
+        self.assertEqual(set(r["pendientes"]), {"spread", "point_value", "comision", "swap_largo", "swap_corto",
                                                 "tipo_swap"})
 
     def test_bce_no_hace_falta_en_usd(self):
-        r = preparar("NDX", fallos=[URL_BCE])
+        r = preparar("XAUUSD", fallos=[URL_BCE])
         self.assertEqual(r["estado"], "COMPLETA")
         self.assertNotIn("BCE (tipos de referencia)", [c["fuente"] for c in r["consultas"]])
 
     def test_pagina_de_costes(self):
         r = preparar("NDX", fallos=[URL_COSTES])
-        self.assertEqual(r["pendientes"], ["comision"])
+        self.assertEqual(r["pendientes"], ["spread", "comision"])
         r = preparar("NDX", sustituir={URL_COSTES: b"<html>otra cosa</html>"})
-        self.assertEqual(r["pendientes"], ["comision"])
+        self.assertEqual(r["pendientes"], ["spread", "comision"])
 
     def test_respuesta_dañada_de_darwinex(self):
         with self.assertRaises(FuenteError):
@@ -249,13 +325,13 @@ class TestUtilidades(unittest.TestCase):
         f = fuentes_simuladas(hora=sabado)
         p = I.Preparacion("NDX", f, PERFIL)
         p.f_dx, p.ticker, p.d, p.fu = "2026-11-28", "NDX", {"pip_tick": "1"}, {}
-        p.campo_spread()
+        p.leer_spread_instantaneo()
         self.assertTrue(any("Mercado cerrado" in a for a in p.avisos))
 
     def test_detalle_distingue_origenes(self):
         r = preparar("EURUSD")
         tipos = {f["campo"]: f["tipo"] for f in r["detalle"]}
-        self.assertEqual(tipos["spread"], "observado")
+        self.assertEqual((tipos["spread"], tipos["spread_instantaneo"]), ("promedio", "observado"))
         self.assertEqual(tipos["comision"], "calculo")
         self.assertEqual(tipos["tipo"], "regla")
         self.assertEqual(tipos["swap_largo"], "dato")

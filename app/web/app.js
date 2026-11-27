@@ -3,7 +3,7 @@
 // (api/instrumento), porque Darwinex y el BCE no permiten que un navegador lea sus datos desde otra web.
 
 const TABLA1 = ["nombre", "tipo", "pip_tick", "point_value", "no_pip_tick", "spread",
-                "slippage", "min_dist", "order_mult", "order_step"];
+                "spread_instantaneo", "slippage", "min_dist", "order_mult", "order_step"];
 const TABLA2 = ["modelo_comision", "comision", "tipo_swap", "swap_largo", "swap_corto", "triple_swap",
                 "rollover", "cobro_swap"];
 const PEND = "PENDIENTE DE VERIFICAR";
@@ -94,6 +94,7 @@ function mostrar(r) {
   }
   const notas = $("notas");
   notas.replaceChildren();
+  for (const l of r.spread_lineas) notas.append(el("li", l.includes("PENDIENTE") ? "aviso-linea" : "", l));
   for (const a of r.avisos) notas.append(el("li", "aviso-linea", a));
   for (const n of r.tabla.notas) notas.append(el("li", "", n));
   $("bloque-notas").hidden = !notas.children.length;
@@ -116,9 +117,14 @@ async function consultar(texto) {
   const boton = $("obtener");
   boton.disabled = true;
   $("resultado").hidden = true;
-  mensaje("cargando", `Consultando Darwinex, el feed de spread y el BCE para ${simbolo.toUpperCase()}…`);
+  mensaje("cargando", `Consultando Darwinex, el feed de precios y el BCE para ${simbolo.toUpperCase()}…`);
+  const q = new URLSearchParams({ simbolo });
+  const medio = $("spread_medio").value.trim();
+  const hasta = $("datos_hasta").value.trim();
+  if (medio) q.set("spread_medio", medio);
+  if (hasta) q.set("datos_hasta", hasta);
   try {
-    const resp = await fetch(`api/instrumento?simbolo=${encodeURIComponent(simbolo)}`, { cache: "no-store" });
+    const resp = await fetch(`api/instrumento?${q}`, { cache: "no-store" });
     let datos = null;
     try { datos = await resp.json(); } catch (e) { datos = null; }
     if (!resp.ok || !datos || datos.error) {

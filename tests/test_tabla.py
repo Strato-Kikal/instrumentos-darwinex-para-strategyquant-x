@@ -55,9 +55,17 @@ def hay_navegador():
 
 class TestCasosCorrectos(unittest.TestCase):
     def test_ejemplos_completos(self):
-        for s in ("EURUSD", "NDX", "XAUUSD"):
+        for s in ("EURUSD", "XAUUSD"):
             r = tabla.validar(ejemplo(s), PERFIL)
             self.assertEqual(r.estado, "COMPLETA", (s, r.errores, r.avisos))
+
+    def test_indice_sin_spread_medio_queda_pendiente(self):
+        # Forex Benchmark no publica índices: Default Spread pendiente, con alternativas
+        r = tabla.validar(ejemplo("NDX"), PERFIL)
+        self.assertEqual((r.estado, r.pendientes, r.errores), ("INCOMPLETA", ["spread"], []))
+        motivo = ejemplo("NDX")["fuentes"]["spread"]["motivo"]
+        self.assertIn("Forex Benchmark no publica", motivo)
+        self.assertIn("Alternativas, sin aplicar", motivo)
 
     def test_swaps_admiten_ambos_signos(self):
         d = ejemplo("NDX")
@@ -69,10 +77,26 @@ class TestCasosCorrectos(unittest.TestCase):
         d["spread"], d["fuentes"]["spread"]["lectura"] = "0", "0"
         self.assertEqual(errores(d), [])
 
-    def test_spread_en_puntos_de_mt5(self):
-        d = ejemplo("NDX")  # MT5 muestra 11 puntos de 0.1 → 1.1 pips de 1
-        d["fuentes"]["spread"].update(unidad="puntos", lectura="11", punto="0.1")
+    def test_spread_medio_con_mas_decimales_que_la_casilla(self):
+        d = ejemplo("EURUSD")
+        d["fuentes"]["spread"]["lectura"] = "0.4233"
         self.assertEqual(errores(d), [])
+
+    def test_spread_medio_con_fecha_final_del_periodo(self):
+        d = ejemplo("EURUSD")
+        d["fuentes"]["spread"]["datos_hasta"] = "2026-11-26"
+        self.assertEqual(errores(d), [])
+        self.assertIn("30 días hasta el 2026-11-26", tabla.lineas_spread(d)[0])
+
+    def test_spread_instantaneo_en_puntos_de_mt5(self):
+        d = ejemplo("NDX")  # MT5 muestra 11 puntos de 0.1 → 1.1 pips de 1
+        d["fuentes"]["spread_instantaneo"].update(unidad="puntos", lectura="11", punto="0.1")
+        self.assertEqual(errores(d), [])
+
+    def test_spread_instantaneo_es_opcional(self):
+        d = ejemplo("EURUSD")
+        del d["spread_instantaneo"], d["fuentes"]["spread_instantaneo"]
+        self.assertEqual(tabla.validar(d, PERFIL).estado, "COMPLETA")
 
     def test_perfil_predeterminado(self):
         p = tabla.cargar_perfil(str(tabla.PERFIL_DEFECTO))
@@ -114,6 +138,16 @@ class TestPendientes(unittest.TestCase):
         self.assertIn("TABLA INCOMPLETA", h)
         self.assertIn('class="cen pend"', h)
         self.assertIn(tabla.CREDITO, h)
+        self.assertIn("BTCUSD: Default Spread PENDIENTE DE VERIFICAR", h)
+
+    def test_html_identifica_el_spread(self):
+        h = tabla.html_doc([tabla.fila_pdf(ejemplo("EURUSD"), PERFIL)])
+        self.assertIn(tabla.ETIQUETA_SPREAD, h)
+        self.assertIn("EURUSD: 0.42 pips", h)
+        self.assertIn("consultado el 2026-11-27 01:22 UTC", h)
+        self.assertIn("Forex Benchmark no indica la fecha final", h)  # periodo ≠ fecha de consulta
+        self.assertIn("spread instantáneo observado en Darwinex 0.4 pips", h)
+        self.assertIn("no se suman al spread", h)
 
 
 class TestNumeros(unittest.TestCase):
@@ -185,9 +219,10 @@ class TestFechas(unittest.TestCase):
 
     def test_horas_imposibles(self):
         for v in ("25:00", "23:60", "8:18", "08.18", None):
-            d = ejemplo("NDX")
-            d["fuentes"]["spread"]["hora_utc"] = v
-            self.assertTrue(any("hora_utc" in e for e in errores(d)), v)
+            for s, campo in (("NDX", "spread_instantaneo"), ("EURUSD", "spread")):
+                d = ejemplo(s)
+                d["fuentes"][campo]["hora_utc"] = v
+                self.assertTrue(any("hora_utc" in e for e in errores(d)), (campo, v))
 
 
 class TestFuentes(unittest.TestCase):
@@ -203,18 +238,72 @@ class TestFuentes(unittest.TestCase):
         d["fuentes"]["swap_largo"] = "darwinex.com 2026-10-27"
         self.assertTrue(any("debe ser un objeto" in x for x in errores(d)))
 
-    def test_spread_sin_hora_ni_unidad(self):
+    def test_spread_instantaneo_sin_hora_ni_unidad(self):
         d = ejemplo("NDX")
-        del d["fuentes"]["spread"]["hora_utc"]
-        del d["fuentes"]["spread"]["unidad"]
+        del d["fuentes"]["spread_instantaneo"]["hora_utc"]
+        del d["fuentes"]["spread_instantaneo"]["unidad"]
         e = errores(d)
         self.assertTrue(any("hora_utc" in x for x in e))
         self.assertTrue(any("unidad" in x for x in e))
 
-    def test_spread_no_observado(self):
-        d = ejemplo("NDX")
+    def test_spread_no_es_un_dato(self):
+        d = ejemplo("EURUSD")
         d["fuentes"]["spread"] = {"tipo": "dato", "url": "x", "fecha": "2026-10-27"}
-        self.assertTrue(any("lectura real" in x for x in errores(d)))
+        self.assertTrue(any("spread medio de Forex Benchmark" in x for x in errores(d)))
+
+    def test_lectura_instantanea_no_vale_como_default_spread(self):
+        d = ejemplo("EURUSD")
+        d["spread"] = d["spread_instantaneo"]
+        d["fuentes"]["spread"] = d["fuentes"]["spread_instantaneo"]
+        self.assertTrue(any("no una lectura instantánea" in x for x in errores(d)))
+
+    def test_criterio_de_la_academia(self):
+        for clave, valor in (("periodo_dias", "7"), ("franja", "Day"), ("comision", "incluida"),
+                             ("broker", "IC Markets (Raw)"), ("fuente", "Myfxbook"), ("unidad", "puntos")):
+            d = ejemplo("EURUSD")
+            d["fuentes"]["spread"][clave] = valor
+            self.assertTrue(any(f"spread.{clave}" in x and "criterio de la academia" in x
+                                for x in errores(d)), clave)
+        d = ejemplo("EURUSD")
+        d["fuentes"]["spread"]["url"] = "https://www.myfxbook.com/forex-broker-spreads"
+        self.assertTrue(any("spread.url" in x for x in errores(d)))
+
+    def test_spread_medio_de_simbolo_sin_cobertura(self):
+        d = ejemplo("NDX")
+        d["spread"] = "1.2"
+        d["fuentes"]["spread"] = dict(ejemplo("EURUSD")["fuentes"]["spread"], lectura="1.2",
+                                      pip_fuente="1", fecha="2026-10-27")
+        self.assertTrue(any("Forex Benchmark no publica" in x for x in errores(d)))
+
+    def test_unidad_de_forex_benchmark_sin_comprobar(self):
+        self.assertIsNone(tabla.pip_forex_benchmark("XAGUSD"))
+        self.assertIsNone(tabla.pip_forex_benchmark("USDMXN"))
+        self.assertIn("no está comprobada", tabla.motivo_sin_spread_medio("XAGUSD"))
+        self.assertEqual(tabla.pip_forex_benchmark("gbpjpy"), tabla.Decimal("0.01"))
+
+    def test_pip_de_forex_benchmark_equivocado(self):
+        d = ejemplo("XAUUSD")
+        d["fuentes"]["spread"]["pip_fuente"] = "0.1"
+        self.assertTrue(any("pip_fuente" in x for x in errores(d)))
+
+    def test_fecha_final_del_periodo(self):
+        d = ejemplo("EURUSD")
+        d["fuentes"]["spread"]["datos_hasta"] = "2026-11-28"
+        self.assertTrue(any("datos_hasta" in x for x in errores(d)))
+        d["fuentes"]["spread"]["datos_hasta"] = "2026-11-01"
+        self.assertTrue(any("termina el 2026-11-01" in x for x in tabla.validar(d, PERFIL).avisos))
+
+    def test_aviso_si_medio_e_instantaneo_no_se_parecen(self):
+        d = ejemplo("EURUSD")
+        d["spread"], d["fuentes"]["spread"]["lectura"] = "4.2", "4.2"  # coma mal copiada
+        r = tabla.validar(d, PERFIL)
+        self.assertEqual(r.errores, [])
+        self.assertTrue(any("bien copiado" in a for a in r.avisos))
+
+    def test_spread_instantaneo_sin_fuente(self):
+        d = ejemplo("EURUSD")
+        del d["fuentes"]["spread_instantaneo"]
+        self.assertTrue(any("spread_instantaneo" in x for x in errores(d)))
 
     def test_calculo_sin_formula_ni_entradas(self):
         d = ejemplo("NDX")
@@ -262,8 +351,11 @@ class TestCoherencia(unittest.TestCase):
 
     def test_spread_mal_convertido(self):
         d = ejemplo("XAUUSD")
-        d["spread"] = "0.44"  # lectura en precio sin pasar a pips de 0.01
-        self.assertTrue(any("no cuadra" in e for e in errores(d)))
+        d["spread"] = "0.48"  # 48.23 pips de 0.01 escritos como precio
+        self.assertTrue(any("no cuadra con Forex Benchmark" in e for e in errores(d)))
+        d = ejemplo("XAUUSD")
+        d["spread_instantaneo"] = "0.44"  # lectura en precio sin pasar a pips de 0.01
+        self.assertTrue(any("spread instantáneo 0.44 no cuadra" in e for e in errores(d)))
 
     def test_tick_real_no_cuadra(self):
         d = ejemplo("NDX")
@@ -501,6 +593,8 @@ class TestCli(unittest.TestCase):
         v1["fuentes"] = {k: ("PENDIENTE DE VERIFICAR: sin datos" if tabla.es_pendiente(v1[k]) else
                              "Convención de la skill") for k in tabla.CAMPOS}
         v1["fuentes"]["nombre"] = "ticker en help.darwinex.com/assets-available (consultada 2026-10-27)"
+        del v1["spread_instantaneo"]
+        v1["spread"] = "11"
         v1["fuentes"]["spread"] = ("OBSERVADO: widgets.fxbluelabs.com/webwidgets/getPriceData.aspx: "
                                    "ask 79773.5 − bid 79762.5 = 11.0 USD, 2026-10-27 08:18 UTC")
         (self.tmp / "tablas" / "BTCUSD.json").write_text(json.dumps(v1), encoding="utf-8")
@@ -508,12 +602,30 @@ class TestCli(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("TABLA INCOMPLETA", r.stdout)
         self.assertTrue((self.tmp / "tablas" / "BTCUSD.json.v1").exists())
+        d = json.loads((self.tmp / "tablas" / "BTCUSD.json").read_text(encoding="utf-8"))
+        # la lectura instantánea no pasa a Default Spread
+        self.assertEqual((d["esquema"], d["spread"], d["spread_instantaneo"]), (3, tabla.PEND, "11"))
+
+    def test_migrar_v2_lectura_instantanea(self):
+        v2 = ejemplo("EURUSD")
+        v2["esquema"], v2["spread"] = 2, v2["spread_instantaneo"]
+        v2["fuentes"]["spread"] = v2["fuentes"].pop("spread_instantaneo")
+        del v2["spread_instantaneo"]
+        p = self.tmp / "tablas" / "EURUSD.json"
+        p.write_text(json.dumps(v2), encoding="utf-8")
+        self.assertIn("esquema 2", self.run_cli("validar", "EURUSD").stdout)
+        r = self.run_cli("migrar", "EURUSD")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d = json.loads(p.read_text(encoding="utf-8"))
+        self.assertEqual((d["spread"], d["spread_instantaneo"]), (tabla.PEND, "0.4"))
+        self.assertIn("falta el spread medio de Forex Benchmark", d["fuentes"]["spread"]["motivo"])
+        self.assertTrue((self.tmp / "tablas" / "EURUSD.json.v2").exists())
 
     @unittest.skipUnless(hay_navegador(), "no hay navegador Chromium instalado")
     def test_generar(self):
         r = self.run_cli("generar", "EURUSD", "BTCUSD")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        pdf = self.tmp / "tablas" / f"EURUSD_BTCUSD_Darwinex_2026-10-27_INCOMPLETA.pdf"
+        pdf = self.tmp / "tablas" / f"EURUSD_BTCUSD_Darwinex_2026-11-27_INCOMPLETA.pdf"
         self.assertIsNone(tabla.comprobar_pdf(pdf))
         self.assertIsNone(tabla.comprobar_pdf(self.tmp / "tablas" / "Tablas_Darwinex_todas.pdf"))
 

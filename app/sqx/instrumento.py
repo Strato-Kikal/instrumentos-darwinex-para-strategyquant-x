@@ -3,9 +3,10 @@
 Hace lo que en la skill hacía Claude siguiendo SKILL.md y reference/tabla-reglas.md:
   1. identificar el ticker de Darwinex (y las equivalencias de Dukascopy comprobadas),
   2. leer contrato, tick, swaps, comisión y triple swap de los datos de Darwinex,
-  3. leer el spread actual y convertirlo a pips,
+  3. poner en Default Spread el spread medio de Forex Benchmark que introduce el usuario
+     (criterio de la academia) y leer aparte el spread instantáneo, solo como información,
   4. convertir a USD con el tipo del BCE cuando hace falta,
-  5. registrar cada valor con su fuente estructurada (esquema 2 de la skill).
+  5. registrar cada valor con su fuente estructurada (esquema 3 de la skill).
 El resultado se valida con tabla.validar() de la skill: si hay errores, no se entrega.
 Lo que no tiene evidencia queda «PENDIENTE DE VERIFICAR», nunca un valor supuesto.
 """
@@ -67,10 +68,12 @@ URL_REPO = "https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyq
 # Nombres de las casillas tal como aparecen en StrategyQuant X (la skill mantiene los suyos).
 ETIQUETAS = {k: cab for k, cab, _, _ in tabla.T1 + tabla.T2}
 ETIQUETAS.update({"pip_tick": "Pip/Tick Size", "no_pip_tick": "Pip/Tick Step",
+                  "spread": "Default Spread", "spread_instantaneo": "Spread instantáneo (informativo)",
                   "comision": "Comisión a poner en SQ", "rollover": "Rollover (SQX)",
                   "tipo_swap": "Tipo de swap", "cobro_swap": "Cobro del swap (Darwinex)"})
 EXTRAS = ["tipo_swap", "cobro_swap"]
-ORIGENES = {"dato": "Dato del bróker", "observado": "Lectura en vivo", "calculo": "Cálculo",
+ORIGENES = {"dato": "Dato del bróker", "observado": "Lectura instantánea (informativa)",
+            "promedio": "Spread medio · Forex Benchmark", "calculo": "Cálculo",
             "regla": "Regla de formato", "pendiente": "Pendiente de verificar",
             "ajuste": "Ajuste personal"}
 
@@ -173,9 +176,42 @@ def buscar(dx, simbolo):
 
 # ---------------------------------------------------------------- preparación de la tabla
 
+def leer_spread_medio(texto):
+    """Valor de Forex Benchmark escrito por el usuario → Decimal o None (vacío). Admite coma."""
+    s = str(texto or "").strip().replace(",", ".")
+    if not s:
+        return None
+    if not re.match(r"^\d{1,6}(\.\d{1,6})?$", s):
+        raise ErrorEntrada(f"«{str(texto).strip()[:20]}» no es un spread medio válido: escribe el "
+                           "número de Forex Benchmark en pips, por ejemplo 0.42.")
+    n = Decimal(s)
+    if n <= 0:
+        raise ErrorEntrada("El spread medio de Forex Benchmark debe ser mayor que 0.")
+    return n
+
+
+def leer_datos_hasta(texto, hoy):
+    """Fecha final del periodo de Forex Benchmark (opcional), AAAA-MM-DD."""
+    s = str(texto or "").strip()
+    if not s:
+        return None
+    try:
+        f = dt.date.fromisoformat(s) if re.match(r"^\d{4}-\d{2}-\d{2}$", s) else None
+    except ValueError:
+        f = None
+    if f is None:
+        raise ErrorEntrada(f"«{s[:20]}» no es una fecha válida (AAAA-MM-DD).")
+    if f > hoy:
+        raise ErrorEntrada("La fecha final de los datos de Forex Benchmark no puede ser futura.")
+    return f.isoformat()
+
+
 class Preparacion:
-    def __init__(self, simbolo, fuentes, perfil):
+    def __init__(self, simbolo, fuentes, perfil, spread_medio=None, datos_hasta=None, ahora=None):
         self.simbolo, self.fuentes, self.perfil = simbolo, fuentes, perfil
+        self.spread_medio, self.datos_hasta = spread_medio, datos_hasta
+        self.ahora = ahora or ahora_utc()
+        self.inst = None  # (valor, fuente) del spread instantáneo, si se pudo leer
         self.d, self.fu, self.notas, self.avisos, self.consultas = {}, {}, [], [], []
         # Casillas que no forman parte del JSON de la skill (esquema 2), con la misma forma de fuente
         self.x, self.fx = {}, {}
@@ -256,10 +292,11 @@ class Preparacion:
         if act:
             self.notas.append(f"Darwinex indica que sus datos se actualizaron el {act:%Y-%m-%d %H:%M} UTC.")
         if self.r.get("spreadAverage") not in (None, ""):
-            self.notas.append(f"Spread medio publicado por Darwinex: {self.r['spreadAverage']} "
-                              "(referencia; la tabla usa la lectura actual).")
-        self.notas.append("Spread, swaps y tipos de cambio son lecturas del momento: vuelve a "
-                          "consultarlos antes de usarlos.")
+            self.notas.append(f"Darwinex publica además un promedio de spread ({self.r['spreadAverage']}) "
+                              "sin indicar su periodo ni su unidad: no se usa en Default Spread.")
+        self.notas.append("Default Spread es el spread medio de 30 días de Forex Benchmark; swaps y "
+                          "tipos de cambio son lecturas del momento: vuelve a consultarlos antes de "
+                          "usarlos.")
 
         fechas = [self.f_dx] + [f["fecha"] for f in self.fu.values() if f.get("fecha")]
         consulta = max(fechas)
@@ -267,6 +304,8 @@ class Preparacion:
                    "creada": consulta}
         tabla_d.update({k: self.d[k] for k in tabla.CAMPOS})
         tabla_d["fuentes"] = {k: self.fu[k] for k in tabla.CAMPOS}
+        if self.inst:
+            tabla_d["spread_instantaneo"], tabla_d["fuentes"]["spread_instantaneo"] = self.inst
         tabla_d["notas"] = self.notas
         r = tabla.validar(tabla_d, self.perfil)
         if r.errores:
@@ -373,39 +412,77 @@ class Preparacion:
         return None if v in (None, PEND) else Decimal(v)
 
     def campo_spread(self):
+        """Default Spread = spread medio de Forex Benchmark (Darwinex, 30 días, 24 horas, sin
+        comisiones), copiado por el usuario de su web: sus condiciones de uso no permiten
+        consultarlo de forma automática. Si no hay valor verificable, queda pendiente con las
+        alternativas, sin sustituir la fuente. El spread instantáneo se lee aparte."""
+        self.leer_spread_instantaneo()
+        nombre = "Forex Benchmark (spread medio)"
+        promedio_dx = self.r.get("spreadAverage")
+        promedio_dx = f"spreadAverage = {promedio_dx}" if promedio_dx not in (None, "") else None
+        pip, pip_fxb = self.pip(), tabla.pip_forex_benchmark(self.ticker)
+        if pip_fxb is None:
+            motivo = tabla.motivo_sin_spread_medio(self.ticker, promedio_dx)
+            self.consulta(nombre, tabla.URL_FXB, None, "sin datos",
+                          motivo.split(". Alternativas")[0])
+            if self.spread_medio is not None:
+                self.avisos.append(f"El spread medio escrito ({txt(self.spread_medio)}) no se usa: "
+                                   f"{motivo.split('. Alternativas')[0]}.")
+            return self.pend("spread", motivo)
+        if self.spread_medio is None:
+            self.consulta(nombre, tabla.URL_FXB, None, "sin datos", "no se ha escrito el spread medio")
+            return self.pend("spread", f"falta el spread medio de {self.ticker}: cópialo de Forex "
+                                       f"Benchmark ({tabla.URL_FXB}) con Darwinex · 24 hours · 30 "
+                                       "days · «Add commission to spread» sin marcar")
+        if pip is None:
+            return self.pend("spread", "falta Pip/Tick Size para pasar el spread medio a pips")
+        valor = self.spread_medio * pip_fxb / pip
+        self.d["spread"] = txt(valor) if valor == valor.quantize(Decimal("0.01")) else cent(valor)
+        f = {"tipo": "promedio", **tabla.CRITERIO_SPREAD, "url": tabla.URL_FXB,
+             "fecha": self.ahora.date().isoformat(), "hora_utc": self.ahora.strftime("%H:%M"),
+             "lectura": txt(self.spread_medio), "pip_fuente": txt(pip_fxb),
+             "nota": "valor copiado a mano de la web de Forex Benchmark; fecha y hora = momento en "
+                     "que se escribió en Instrumentos SQX"}
+        if self.datos_hasta:
+            f["datos_hasta"] = self.datos_hasta
+        self.fu["spread"] = f
+        self.consulta(nombre, tabla.URL_FXB, self.ahora, "correcto",
+                      f"{txt(self.spread_medio)} pips escritos por el usuario · periodo: "
+                      f"{tabla.periodo_spread(f)}")
+
+    def leer_spread_instantaneo(self):
+        """Spread instantáneo del feed de precios de Darwinex: solo informativo."""
+        nombre = "Feed de precios (spread instantáneo)"
         pip = self.pip()
         try:
             precio, hora, url = self.fuentes.precios(self.ticker)
         except FuenteError as e:
-            self.consulta("Feed de spread (fxbluelabs)", "https://widgets.fxbluelabs.com", None,
-                          "fallo", e.motivo)
-            self.avisos.append(f"No se pudo leer el spread actual ({e.motivo}).")
-            return self.pend("spread", f"el feed de precios de Darwinex no respondió ({e.motivo}); "
-                                       "usa la columna Spread de MT5 → Observación de mercado")
+            self.consulta(nombre, "https://widgets.fxbluelabs.com", None, "fallo", e.motivo)
+            self.avisos.append(f"No se pudo leer el spread instantáneo ({e.motivo}). Es solo "
+                               "informativo: no cambia Default Spread.")
+            return
         if precio is None:
-            self.consulta("Feed de spread (fxbluelabs)", url, hora, "sin datos",
-                          f"sin cotización para {self.ticker}")
-            return self.pend("spread", f"el feed de precios no tiene cotización de {self.ticker}; "
-                                       "usa la columna Spread de MT5 → Observación de mercado")
+            self.consulta(nombre, url, hora, "sin datos", f"sin cotización para {self.ticker}")
+            return
         bid, ask = precio
         lectura = ask - bid
-        self.consulta("Feed de spread (fxbluelabs)", url, hora, "correcto",
-                      f"bid {txt(bid)} · ask {txt(ask)}")
+        self.consulta(nombre, url, hora, "correcto", f"bid {txt(bid)} · ask {txt(ask)}")
         if lectura < 0:
-            return self.pend("spread", f"lectura incoherente (ask {txt(ask)} < bid {txt(bid)})")
+            self.avisos.append(f"Spread instantáneo incoherente (ask {txt(ask)} < bid {txt(bid)}): "
+                               "no se muestra.")
+            return
         if pip is None:
-            return self.pend("spread", "falta Pip/Tick Size para pasar la lectura a pips")
+            return
         pips = lectura / pip
-        self.d["spread"] = txt(pips) if pips == pips.quantize(Decimal("0.01")) else cent(pips)
-        self.fu["spread"] = {"tipo": "observado", "url": url, "fecha": hora.date().isoformat(),
+        valor = txt(pips) if pips == pips.quantize(Decimal("0.01")) else cent(pips)
+        self.inst = (valor, {"tipo": "observado", "url": url, "fecha": hora.date().isoformat(),
                              "hora_utc": hora.strftime("%H:%M"), "unidad": "precio",
                              "lectura": txt(lectura),
-                             "nota": f"ask {txt(ask)} − bid {txt(bid)}; feed de precios que usa "
-                                     "la web de Darwinex"}
+                             "nota": f"ask {txt(ask)} − bid {txt(bid)}; feed de precios que usa la "
+                                     "web de Darwinex; solo informativo, no va en Default Spread"})
         if fin_de_semana(hora):
-            self.avisos.append("Mercado cerrado por el fin de semana: el feed puede dar la última "
-                               "cotización del viernes y el spread puede no ser representativo.")
-            self.notas.append(f"Spread leído con el mercado cerrado ({hora:%Y-%m-%d %H:%M} UTC).")
+            self.avisos.append("Mercado cerrado por el fin de semana: el spread instantáneo puede ser "
+                               "la última cotización del viernes y no ser representativo.")
 
     def campo_comision(self):
         porcentaje = self.clase in ("commodities", "crypto")
@@ -567,6 +644,12 @@ def explicar(fuente):
         return ORIGENES[t], (f"{fuente.get('url')} · {fuente.get('fecha')} {fuente.get('hora_utc')} UTC · "
                              f"lectura {fuente.get('lectura')} ({fuente.get('unidad')}) ÷ Pip/Tick Size · "
                              f"{fuente.get('nota', '')}").rstrip(" ·")
+    if t == "promedio":
+        return ORIGENES[t], (f"{tabla.ETIQUETA_SPREAD} · {fuente.get('url')} · consultado el "
+                             f"{fuente.get('fecha')} {fuente.get('hora_utc')} UTC · periodo: "
+                             f"{tabla.periodo_spread(fuente)} · valor {fuente.get('lectura')} pips "
+                             f"de {fuente.get('pip_fuente')} × pip de Forex Benchmark ÷ Pip/Tick "
+                             f"Size · {fuente.get('nota', '')}").rstrip(" ·")
     if t == "regla":
         return ORIGENES[t], f"{fuente.get('regla')} · {fuente.get('referencia')}"
     if t == "calculo":
@@ -590,8 +673,13 @@ def detalle(tabla_d, perfil, extras=None):
     fuentes = dict(tabla_d["fuentes"])
     for k, (v, f) in (extras or {}).items():
         valores[k], fuentes[k] = v, f
+    if "spread_instantaneo" in tabla_d:
+        valores["spread_instantaneo"] = tabla_d["spread_instantaneo"]
     filas = []
-    for k in tabla.CAMPOS + [k for k in EXTRAS if k in fuentes]:
+    campos = list(tabla.CAMPOS)
+    if "spread_instantaneo" in valores:
+        campos.insert(campos.index("spread") + 1, "spread_instantaneo")
+    for k in campos + [k for k in EXTRAS if k in fuentes]:
         origen, texto = explicar(fuentes[k])
         filas.append({"campo": k, "casilla": ETIQUETAS.get(k, k), "valor": valores[k],
                       "tipo": fuentes[k]["tipo"], "origen": origen, "explicacion": texto,
@@ -632,8 +720,11 @@ def textos(tabla_d, perfil, extras):
     t.update(perfil.ajustes)
     fu = tabla_d["fuentes"]
     if not tabla.es_pendiente(t["spread"]):
-        f = fu["spread"]
-        t["spread"] = f"{t['spread']} pips · lectura puntual\n{f['fecha']} {f['hora_utc']} UTC"
+        t["spread"] = f"{t['spread']} pips\nmedio 30 días · 24 h"
+    if "spread_instantaneo" in tabla_d:
+        f = fu["spread_instantaneo"]
+        t["spread_instantaneo"] = (f"{tabla_d['spread_instantaneo']} pips · {f['fecha']} "
+                                   f"{f['hora_utc']} UTC · no va en SQX")
     c = t["comision"]
     if not tabla.es_pendiente(c):
         if tabla_d["modelo_comision"] == "Comisión en porcentaje":
@@ -658,6 +749,10 @@ def textos(tabla_d, perfil, extras):
 def pruebas_sqx(tabla_d, perfil):
     """Comprobaciones que solo se pueden hacer dentro de StrategyQuant X."""
     pruebas = []
+    sp = tabla_d["spread"]
+    if not tabla.es_pendiente(sp):
+        pruebas.append(f"Spread: Default Spread = {sp} pips (spread medio, sin comisiones). La "
+                       "comisión va en su casilla; comprueba que el backtest no la cobra dos veces.")
     c = tabla_d["comision"]
     if not tabla.es_pendiente(c):
         if tabla_d["modelo_comision"] == "Comisión en porcentaje":
@@ -686,11 +781,15 @@ def describir_perfil(perfil):
             "origen": getattr(perfil, "origen", "")}
 
 
-def preparar(texto, fuentes, perfil):
-    """Consulta las fuentes y devuelve el resultado completo de un símbolo."""
+def preparar(texto, fuentes, perfil, spread_medio=None, datos_hasta=None):
+    """Consulta las fuentes y devuelve el resultado completo de un símbolo. spread_medio es el
+    valor de Forex Benchmark que escribe el usuario (texto, opcional) y datos_hasta la fecha
+    final de su periodo, si la conoce."""
     simbolo = normalizar(texto)
     inicio = ahora_utc()
-    p = Preparacion(simbolo, fuentes, perfil)
+    medio = leer_spread_medio(spread_medio)
+    hasta = leer_datos_hasta(datos_hasta, inicio.date())
+    p = Preparacion(simbolo, fuentes, perfil, medio, hasta, inicio)
     tabla_d, r = p.preparar()
     extras = {k: (p.x[k], p.fx[k]) for k in EXTRAS}
     pendientes = r.pendientes + [k for k in EXTRAS if p.x[k] == PEND]
@@ -701,6 +800,9 @@ def preparar(texto, fuentes, perfil):
     return {
         "simbolo": simbolo, "ticker_darwinex": p.ticker, "clase": CLASES[p.clase]["nombre"],
         "consulta_utc": inicio.strftime("%Y-%m-%d %H:%M"),
+        "spread_lineas": tabla.lineas_spread(tabla_d), "spread_etiqueta": tabla.ETIQUETA_SPREAD,
+        "forex_benchmark": {"url": tabla.URL_FXB,
+                            "cubre": tabla.pip_forex_benchmark(p.ticker) is not None},
         "estado": estado, "pendientes": pendientes, "faltan": faltan,
         "estado_texto": ESTADO_COMPLETO if not pendientes else
                         "Datos incompletos · faltan: " + ", ".join(faltan),

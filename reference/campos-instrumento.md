@@ -49,7 +49,7 @@ Opciones de broker profile vistas en build 143 (filtro de Edit symbol, 2026-10-1
 
 **Pip/Tick step** (columna «No Pip/Tick» de la tabla) — SQ: movimiento mínimo del precio, es decir, el **tick real** del instrumento (SQ-IMPORT: «by how much one pip can move», 0.00001 con 5 decimales). Forex en Darwinex: Pip/Tick size ÷ 10 (0.0001 → 0.00001; 0.01 → 0.001), porque cotiza con 5 decimales (3 en JPY). Resto: tick value ÷ contrato con los datos de Darwinex (p. ej., NDX 1 USD ÷ 10 = 0.1; WS30 = 1). **No se aplica ÷ 10 fuera de forex.** Si no hay datos: PENDIENTE DE VERIFICAR y comprobar en MT5 → Especificación.
 
-**Default spread (pips)** — Siempre el spread real y actual observado en la tabla de Darwinex, con su hora UTC. Nunca vacío (ver [spread-slippage.md](spread-slippage.md)).
+**Default spread (pips)** — Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones (criterio de la academia), en pips de Pip/Tick size, con fecha de consulta y periodo. Si Forex Benchmark no cubre el símbolo: PENDIENTE DE VERIFICAR con alternativas, sin sustituir la fuente. El spread instantáneo de Darwinex no va aquí (ver [spread-slippage.md](spread-slippage.md)).
 
 **Default slippage (pips)** — Ajuste personal del perfil (predeterminado **0**).
 

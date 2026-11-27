@@ -14,11 +14,11 @@ Lista para que el usuario la revise en StrategyQuant al introducir la tabla. La 
 - [ ] El periodo de datos no empieza antes de 2007, o se ha revisado aparte.
 
 ## Instrumento ↔ bróker
-- [ ] Default spread = lectura real con hora UTC; slippage, multiplier, step, min distance y Rollout hour = ajustes personales del perfil (`tabla.py perfil`).
+- [ ] Default spread = Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones, con fecha de consulta y periodo (nunca el spread instantáneo); slippage, multiplier, step, min distance y Rollout hour = ajustes personales del perfil (`tabla.py perfil`).
 - [ ] Pip/Tick size × contrato = pip value publicado por Darwinex.
 - [ ] Pip/Tick step = tick real (forex: Pip/Tick size ÷ 10; resto: tick value ÷ contrato). Confirmado en MT5 → Especificación.
 - [ ] Point value convertido desde la divisa **cotizada** a USD con un tipo fechado.
-- [ ] Commission = comisión por orden × 2 (ida y vuelta), sin duplicarla otra vez; Triple swap on = día de la nota de Darwinex.
+- [ ] Commission = comisión por orden × 2 (ida y vuelta), sin duplicarla otra vez ni sumarla al spread; Triple swap on = día de la nota de Darwinex.
 - [ ] Swaps: unidad de Swap type igual a la del valor introducido; tipo de cambio fechado.
 
 ## Instrumento ↔ custom project

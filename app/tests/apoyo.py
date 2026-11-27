@@ -12,6 +12,12 @@ from sqx import fuentes as F  # noqa: E402
 DATOS = Path(__file__).resolve().parent / "datos"
 PERFIL = tabla.cargar_perfil(str(tabla.PERFIL_DEFECTO))
 
+# Spread medio real de Forex Benchmark para Darwinex (24 hours, 30 days, sin «Add commission»),
+# consultado el 2026-11-27 01:22 UTC y redondeado a 2 decimales, como lo muestra su tabla. Es lo
+# que el usuario copia en la app; las pruebas lo usan como entrada.
+FXB = {"EURUSD": "0.42", "USDJPY": "0.98", "USDCAD": "0.94", "GBPJPY": "2.60", "GBPUSD": "0.90",
+       "AUDUSD": "0.70", "XAUUSD": "48.23", "XAGUSD": "1.63"}
+
 
 def respuesta(nombre):
     return (DATOS / nombre).read_bytes()

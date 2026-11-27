@@ -213,7 +213,7 @@ T1 = [("simbolo", 10, "izq"), ("nombre", 13, "izq"), ("tipo", 7, "cen"), ("pip_t
 T2 = [("simbolo", 8.5, "izq"), ("modelo_comision", 10, "cen"), ("comision", 18, "cen"),
       ("tipo_swap", 11, "cen"), ("swap_largo", 7.5, "cen"), ("swap_corto", 7.5, "cen"),
       ("triple_swap", 9, "cen"), ("rollover", 15.5, "cen"), ("cobro_swap", 13, "cen")]
-CABECERAS = {"simbolo": "Símbolo", "point_value": "Point Value $", "spread": "Spread",
+CABECERAS = {"simbolo": "Símbolo", "point_value": "Point Value $", "spread": "Default Spread",
              "swap_largo": "Swap largo", "swap_corto": "Swap corto"}
 AJUSTE = " (ajuste)"
 
@@ -273,9 +273,12 @@ def pagina_principal(lz, resultados):
     titulo_h2(lz, "1. Configuración principal del instrumento")
     tabla_sqx(lz, resultados, T1)
     lz.y += 1.5 * MM
-    parrafo(lz, "«(ajuste)» y Rollover (SQX) son ajustes personales del perfil, no datos del bróker. "
-                "El spread es una lectura puntual del momento de la consulta; si en SQX fijas un "
-                "spread para el backtest, ese valor es un ajuste del backtest.", tam=7.5, col=GRIS)
+    parrafo(lz, f"Default Spread: {tabla.ETIQUETA_SPREAD}. La comisión va aparte, en la tabla 2: no "
+                "se suma al spread. «(ajuste)» y Rollover (SQX) son ajustes personales del perfil, "
+                "no datos del bróker; el rollover no cambia el periodo del spread.", tam=7.5, col=GRIS)
+    for res in resultados:
+        for linea in res["spread_lineas"]:
+            parrafo(lz, linea, tam=7.5, col=ROJO if "PENDIENTE" in linea else GRIS, sangria="• ")
     lz.y += 5 * MM
     titulo_h2(lz, "2. Comisiones, swaps y rollover")
     tabla_sqx(lz, resultados, T2)
@@ -309,7 +312,8 @@ ETIQUETAS_URL = [
     (URL_DARWINEX, "Darwinex · datos"), ("https://www.darwinex.com/forex-cfds/", "Darwinex · tabla"),
     (URL_BCE, "BCE · tipos de cambio"), (URL_COSTES, "Darwinex · costes"),
     (URL_HORA_MT, "Darwinex · hora MT5"), (URL_NOTA_PROPIA, "Darwinex · nota de swaps"),
-    ("https://widgets.fxbluelabs.com", "Feed de precios"), (URL_SQ_PV, "Foro SQ · Point value"),
+    ("https://widgets.fxbluelabs.com", "Feed de precios"),
+    ("https://forexbenchmark.com/", "Forex Benchmark · spreads históricos"), (URL_SQ_PV, "Foro SQ · Point value"),
     ("https://strategyquant.com/doc/", "Documentación SQ"), (URL_REPO, "Reglas de la skill"),
 ]
 
@@ -370,7 +374,11 @@ def como(fuente):
     if t == "observado":
         return (f"Lectura del {fuente['fecha']} a las {fuente['hora_utc']} UTC: "
                 f"{fuente.get('nota', '').split(';')[0]} = {fuente['lectura']} "
-                f"({fuente['unidad']}) ÷ Pip/Tick Size = pips")
+                f"({fuente['unidad']}) ÷ Pip/Tick Size. Solo informativo")
+    if t == "promedio":
+        return (f"Darwinex · 30 días · 24 h · sin comisiones, copiado a mano. Consulta "
+                f"{fuente['fecha']} {fuente['hora_utc']} UTC; periodo: {tabla.periodo_spread(fuente)}. "
+                f"{fuente['lectura']} pips de {fuente['pip_fuente']} → pips de Pip/Tick Size")
     if t == "regla":
         return sin_url(fuente.get("regla", ""))
     if t == "calculo":
@@ -398,9 +406,10 @@ def pagina_fuentes(lz, resultados, momento):
                 f"{perfil['nombre']} · {perfil['broker']} {perfil['plataforma']} · cuenta en "
                 f"{perfil['divisa_cuenta']} · datos {datos['proveedor']} descargados con "
                 f"«{datos['broker_profile_descarga']}» y clonados a «{datos['zona_clon']}». "
-                "Los enlaces azules abren la fuente. Origen: dato del bróker, lectura en vivo, "
-                "cálculo (fórmula y entradas), regla de formato o ajuste personal (decisión del "
-                "perfil, no del bróker).", tam=7.5)
+                "Los enlaces azules abren la fuente. Origen: dato del bróker, spread medio de Forex "
+                "Benchmark (el de Default Spread), lectura instantánea (solo informativa), cálculo "
+                "(fórmula y entradas), regla de formato o ajuste personal (decisión del perfil, no "
+                "del bróker).", tam=7.5)
     lz.y += 2 * MM
     for res in resultados:
         destino = res["ticker_darwinex"]

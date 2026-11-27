@@ -1,5 +1,19 @@
 # Cambios
 
+## Sin publicar: spread medio de Forex Benchmark (criterio de la academia)
+
+- **Default Spread = Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** en la skill y en la app. Antes era la lectura instantánea de Darwinex. Reglas, unidades y cobertura en `reference/spread-slippage.md`; verificación del 2026-11-27 en `reference/verificacion-fuentes.md`.
+- **Esquema 3 del JSON**: nueva fuente `promedio` (fuente, bróker, 30 días, 24 horas, comisión excluida, unidad, lectura, `pip_fuente`, fecha y hora de consulta y, opcional, `datos_hasta`). `tabla.py` rechaza cualquier otro criterio y la lectura instantánea como Default Spread. La lectura instantánea pasa a `spread_instantaneo` (opcional, solo informativa).
+- `tabla.py migrar` convierte los esquemas 1 y 2: conserva la lectura en `spread_instantaneo` y deja Default Spread PENDIENTE hasta añadir el spread medio.
+- **Forex Benchmark no se consulta de forma automática** (sin API; sus condiciones de uso lo impiden): el usuario copia el valor. La app tiene dos campos nuevos (spread medio y fecha final de los datos).
+- **Cobertura**: forex entre USD, EUR, JPY, GBP, CAD, AUD, NZD y CHF, y XAUUSD. XAGUSD y exóticos (unidad sin comprobar), índices, petróleo y cripto quedan PENDIENTE con alternativas (MT5 de Darwinex 30 días, promedio de Darwinex, otra fuente de la academia), sin sustituir la fuente.
+- **PDF de la skill**: la columna pasa a «Spread medio (pips)» y debajo de la tabla 1 aparecen el criterio, la fecha de consulta, el periodo (distinto de la consulta) y el spread instantáneo aparte. **PDF de la app**: casilla «Default Spread» («X pips · medio 30 días · 24 h»), las mismas líneas bajo la tabla 1, una comprobación nueva en SQX (spread y comisión separados) y el spread instantáneo como fila informativa en la página de fuentes.
+- Aviso si el spread medio y el instantáneo se diferencian más de 5 veces (posible error de copia).
+- Ejemplos: EURUSD (0.42) y XAUUSD (48.23) con el spread medio real del 2026-11-27; NDX queda INCOMPLETA (Forex Benchmark no publica índices).
+- Sin cambios: comisión (por orden × 2), swaps, triple swap, Pip/Tick, Point Value, perfil (rollover 23:59, MT5, USD, Dukascopy, EST+07).
+- `SKILL.md`: la descripción del encabezado va entre comillas (el «: » de «Perfil predeterminado: MT5» rompía el YAML estricto).
+- Pruebas: skill 68 → 82; app 50 → 58.
+
 ## 2.2.0 (2026-11-27): aplicación «Instrumentos SQX»
 
 - Nueva carpeta `app/`: aplicación web instalable (PWA) y servidor en Python (solo biblioteca estándar) que preparan la tabla de un símbolo sin Claude: consultan Darwinex, el feed de spread, el BCE y la página de costes de Darwinex, aplican las reglas de `reference/`, validan con `tabla.validar()` y generan el PDF (página 1 igual que la de la skill + anexo de fuentes, fechas, fórmulas y ajustes). Ver `app/README.md`.
