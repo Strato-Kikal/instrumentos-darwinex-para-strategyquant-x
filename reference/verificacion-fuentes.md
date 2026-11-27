@@ -19,6 +19,21 @@ La skill pone en SQ la comisión por orden × 2. Hay una base suficiente: Darwin
 
 **PENDIENTE DE VERIFICAR (una sola vez, en StrategyQuant build 143):** haz un backtest con una sola operación de 1 lote y la comisión de un símbolo (p. ej., NDX 5.50). En la lista de operaciones, la comisión cobrada debe ser 5.50 (ida y vuelta). Si sale 11.00, SQ cobra por lado: cambia `FACTOR_IDA_VUELTA` a 1 en `scripts/tabla.py` y avisa en el CHANGELOG.
 
+## Spread medio de Forex Benchmark (2026-11-27)
+
+| Punto | Estado | Evidencia |
+|---|---|---|
+| Forex Benchmark publica el spread medio histórico de Darwinex con 30 días, 24 horas y sin comisión | Verificado | Página Historic spreads: Darwinex en la lista de brókeres; opciones «24 hours», «30 days» y «Add commission to spread» (desmarcada por defecto). Consulta del 2026-11-27 01:22 UTC (autorizada por el usuario, una sola vez): EURUSD 0.42, USDJPY 0.98, USDCAD 0.94, GBPJPY 2.60, GBPUSD 0.90, AUDUSD 0.70, XAUUSD 48.23, XAGUSD 1.63 |
+| Unidad: pips (forex 0.0001 / JPY 0.01; XAUUSD 0.01) | Verificado | «0.1 is added for every $1 of commission» y contraste con bid/ask de Darwinex (ver spread-slippage.md) |
+| Unidad de XAGUSD y de los exóticos | Pendiente | Sin lectura de Darwinex con la que contrastarla |
+| Cobertura | Verificado | Solo forex, XAUUSD y XAGUSD; ni índices, ni petróleo, ni cripto |
+| Fecha final del periodo | Pendiente | La tabla no la muestra; el valor parece la media de unos 21 días de mercado |
+| Comisión que Forex Benchmark atribuye a Darwinex: 5,00 USD por lote ida y vuelta | Verificado | Página Broker information. Coincide con la regla de la skill (2,5 por orden × 2) |
+| Consulta automática | No permitida sin permiso | Sin API pública; los términos de uso prohíben «access them using a method other than the interface and the instructions». El valor lo copia el usuario |
+| Qué cuenta de Darwinex miden (MT4 o MT5, servidor) | Pendiente | Forex Benchmark no lo indica |
+
+**Comprobación pendiente en StrategyQuant build 143:** con una operación de 1 lote, el coste del spread debe ser Default Spread × valor del pip, y la comisión debe cobrarse una sola vez, aparte del spread.
+
 ## Otros puntos pendientes
 
 - La captura de la ventana de clonado de build 143 (nombre exacto de la zona EST+07 en el desplegable): ver guias/descarga-y-clonacion.md.

@@ -1,14 +1,15 @@
 {
-  "esquema": 2,
+  "esquema": 3,
   "simbolo": "XAUUSD",
-  "consulta": "2026-10-27",
+  "consulta": "2026-11-27",
   "creada": "2026-10-27",
   "nombre": "XAUUSD_Darwinex",
   "tipo": "Forex / CFD",
   "pip_tick": "0.01",
   "point_value": "100",
   "no_pip_tick": "0.01",
-  "spread": "44",
+  "spread": "48.23",
+  "spread_instantaneo": "44",
   "modelo_comision": "Comisión en porcentaje",
   "comision": "0.005",
   "swap_largo": "-55.60",
@@ -25,7 +26,8 @@
         {"nombre": "tick_value", "valor": "1", "unidad": "USD", "url": "https://www.darwinex.com/forex-cfds/commodities", "fecha": "2026-10-27"},
         {"nombre": "contrato", "valor": "100", "url": "https://www.darwinex.com/forex-cfds/commodities", "fecha": "2026-10-27"}
       ]},
-    "spread": {"tipo": "observado", "url": "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s=XAUUSD", "fecha": "2026-10-27", "hora_utc": "08:18", "unidad": "precio", "lectura": "0.44", "nota": "ask 4000.31 − bid 3999.87"},
+    "spread": {"tipo": "promedio", "fuente": "Forex Benchmark", "broker": "Darwinex", "periodo_dias": "30", "franja": "24 horas", "comision": "excluida", "unidad": "pips", "url": "https://forexbenchmark.com/brokers/historic_spreads/", "fecha": "2026-11-27", "hora_utc": "01:22", "lectura": "48.23", "pip_fuente": "0.01", "nota": "valor de la tabla de Forex Benchmark (2 decimales); Forex Benchmark no indica la fecha final del periodo"},
+    "spread_instantaneo": {"tipo": "observado", "url": "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s=XAUUSD", "fecha": "2026-10-27", "hora_utc": "08:18", "unidad": "precio", "lectura": "0.44", "nota": "ask 4000.31 − bid 3999.87"},
     "modelo_comision": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/commodities", "fecha": "2026-10-27", "nota": "«0.0025% order value» → Comisión en porcentaje"},
     "comision": {"tipo": "calculo", "formula": "comision_por_orden (%) × 2 (ida y vuelta)",
       "entradas": [
@@ -36,5 +38,5 @@
     "swap_corto": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/commodities", "fecha": "2026-10-27"},
     "triple_swap": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/commodities", "fecha": "2026-10-27", "nota": "«in triple size on Wednesdays»"}
   },
-  "notas": ["Ejemplo con datos reales del 2026-10-27 08:18 UTC. No lo copies: vuelve a consultarlo."]
+  "notas": ["Ejemplo con datos reales: spread medio de Forex Benchmark consultado el 2026-11-27 01:22 UTC; el resto, del 2026-10-27 08:18 UTC. No lo copies: vuelve a consultarlo."]
 }

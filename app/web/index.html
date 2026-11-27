@@ -36,6 +36,23 @@
         <button id="obtener" type="submit">Obtener datos</button>
       </div>
       <p class="ayuda">Ticker de Darwinex (EURUSD, NDX, XAUUSD…) o equivalente de Dukascopy (USATECHIDXUSD).</p>
+
+      <fieldset class="spread-medio">
+        <legend>Spread medio · Forex Benchmark</legend>
+        <p class="ayuda">Default Spread = spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones.
+          Abre <a href="https://forexbenchmark.com/brokers/historic_spreads/" target="_blank" rel="noopener noreferrer">Forex Benchmark · Historic spreads</a>,
+          elige <b>Darwinex</b>, <b>24 hours</b> y <b>30 days</b>, deja <b>sin marcar</b> «Add commission to spread» y copia aquí el valor del símbolo.
+          Solo hay datos de forex y XAUUSD: índices, petróleo y cripto quedan pendientes.</p>
+        <div class="fila-spread">
+          <label for="spread_medio">Spread medio (pips)
+            <input id="spread_medio" name="spread_medio" type="text" inputmode="decimal" placeholder="0.42"
+                   maxlength="14" autocorrect="off" spellcheck="false">
+          </label>
+          <label for="datos_hasta">Fecha final de los datos (opcional)
+            <input id="datos_hasta" name="datos_hasta" type="date">
+          </label>
+        </div>
+      </fieldset>
     </form>
 
     <section id="mensaje" aria-live="polite"></section>
@@ -81,7 +98,8 @@
         <h2>Qué significa cada origen</h2>
         <ul>
           <li><span class="origen o-dato">Dato del bróker</span> leído hoy en los datos de Darwinex.</li>
-          <li><span class="origen o-observado">Lectura en vivo</span> spread observado ahora en el feed de precios de Darwinex.</li>
+          <li><span class="origen o-promedio">Spread medio · Forex Benchmark</span> valor que has copiado de Forex Benchmark (Darwinex, 30 días, 24 horas, sin comisiones). Es el que va en Default Spread.</li>
+          <li><span class="origen o-observado">Lectura instantánea (informativa)</span> spread observado ahora en el feed de precios de Darwinex. No va en StrategyQuant.</li>
           <li><span class="origen o-calculo">Cálculo</span> fórmula con sus entradas y fuentes (p. ej., conversión a USD con el BCE).</li>
           <li><span class="origen o-regla">Regla de formato</span> convención documentada de la skill.</li>
           <li><span class="origen o-ajuste">Ajuste personal</span> decisión del perfil, no es un dato del bróker.</li>

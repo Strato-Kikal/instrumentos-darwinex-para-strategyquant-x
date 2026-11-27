@@ -1,5 +1,5 @@
 {
-  "esquema": 2,
+  "esquema": 3,
   "simbolo": "NDX",
   "consulta": "2026-10-27",
   "creada": "2026-10-27",
@@ -8,7 +8,8 @@
   "pip_tick": "1",
   "point_value": "10",
   "no_pip_tick": "0.1",
-  "spread": "1.1",
+  "spread": "PENDIENTE DE VERIFICAR",
+  "spread_instantaneo": "1.1",
   "modelo_comision": "En función del tamaño",
   "comision": "5.50",
   "swap_largo": "-47.14",
@@ -27,7 +28,8 @@
         {"nombre": "tick_value", "valor": "1", "unidad": "USD", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"},
         {"nombre": "contrato", "valor": "10", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27"}
       ]},
-    "spread": {"tipo": "observado", "url": "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s=NDX", "fecha": "2026-10-27", "hora_utc": "08:18", "unidad": "precio", "lectura": "1.1", "nota": "ask 29223.3 − bid 29222.2"},
+    "spread": {"tipo": "pendiente", "motivo": "Forex Benchmark no publica el spread medio de NDX (su lista, leída el 2026-11-27, solo tiene forex, XAUUSD y XAGUSD). Alternativas, sin aplicar: 1) medir el spread medio de 30 días y 24 horas en MT5 conectado a Darwinex; 2) el promedio que publica Darwinex, si lo publica (sin periodo ni unidad conocidos); 3) otra fuente que indique la academia"},
+    "spread_instantaneo": {"tipo": "observado", "url": "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s=NDX", "fecha": "2026-10-27", "hora_utc": "08:18", "unidad": "precio", "lectura": "1.1", "nota": "ask 29223.3 − bid 29222.2"},
     "modelo_comision": {"tipo": "dato", "url": "https://www.darwinex.com/forex-cfds/indices", "fecha": "2026-10-27", "nota": "importe fijo por contrato y orden → En función del tamaño"},
     "comision": {"tipo": "calculo", "formula": "comision_por_orden × 2 (ida y vuelta)",
       "entradas": [

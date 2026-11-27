@@ -2,7 +2,9 @@
 
 [![pruebas](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/actions/workflows/pruebas.yml/badge.svg)](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/actions/workflows/pruebas.yml)
 
-Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolos para **StrategyQuant X (build 143)** con el bróker **Darwinex**: Pip/Tick, Point Value, tick real, spread actual, comisión, swaps y triple swap. Cada dato lleva su fuente y su fecha, y cada cálculo su fórmula y sus entradas.
+Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolos para **StrategyQuant X (build 143)** con el bróker **Darwinex**: Pip/Tick, Point Value, tick real, spread medio, comisión, swaps y triple swap. Cada dato lleva su fuente y su fecha, y cada cálculo su fórmula y sus entradas.
+
+> **Spread (criterio de la academia, 2026-11-27)**: Default Spread = **Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** ([reference/spread-slippage.md](reference/spread-slippage.md)). El usuario copia el valor de [Forex Benchmark](https://forexbenchmark.com/brokers/historic_spreads/); solo cubre forex y XAUUSD, y el resto queda PENDIENTE con alternativas. El spread instantáneo de Darwinex se muestra aparte, solo como información.
 
 > **Nuevo: aplicación independiente «Instrumentos SQX»** (en pruebas, carpeta [`app/`](app/README.md)). Hace lo mismo sin Claude Code, sin cuentas de IA ni claves API: una web instalable (PWA) para móvil y ordenador con un pequeño servidor en Python que consulta las fuentes, aplica las reglas de la skill, valida con `tabla.py` y genera el PDF. La skill sigue funcionando igual.
 
@@ -10,15 +12,15 @@ Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolo
 
 | Quién | Qué hace |
 |---|---|
-| **Claude** (siguiendo `SKILL.md`) | Consulta las fuentes en vivo (tablas de Darwinex, feed de spread, BCE, documentación de StrategyQuant), decide qué valor va en cada casilla y escribe el JSON del símbolo con sus fuentes. |
-| **`scripts/tabla.py`** | Valida datos, fechas, tipos y fuentes; comprueba la coherencia (conversión del spread, comisión ida y vuelta, tick real, point value) y genera el PDF. No consulta internet. |
+| **Claude** (siguiendo `SKILL.md`) | Consulta las fuentes en vivo (tablas de Darwinex, BCE, documentación de StrategyQuant y, solo como información, el feed de precios), pide al usuario el spread medio de Forex Benchmark, decide qué valor va en cada casilla y escribe el JSON del símbolo con sus fuentes. |
+| **`scripts/tabla.py`** | Valida datos, fechas, tipos y fuentes; comprueba la coherencia (criterio y unidades del spread medio, comisión ida y vuelta, tick real, point value) y genera el PDF. No consulta internet. |
 | **El usuario** | Revisa el PDF e introduce los valores en StrategyQuant a mano. La skill no modifica StrategyQuant ni MetaTrader ni opera. |
 
 ## Requisitos
 
 - **Claude Code** con:
   - **Acceso web en vivo** para leer páginas sin caché: Firecrawl (`scrape` con `maxAge: 0`) o WebFetch. Sin él, la skill no puede obtener datos y lo dice.
-  - **Bash** para ejecutar `python3`, `date -u` y `curl` (feed de spread de respaldo).
+  - **Bash** para ejecutar `python3`, `date -u` y `curl` (feed de precios, solo para el spread instantáneo informativo).
 - **Python 3.8 o superior**, solo biblioteca estándar (sin `pip install`). Las pruebas se ejecutan en GitHub Actions con Python 3.8 a 3.13 en macOS, Windows y Linux (ver la insignia de CI).
 - **Un navegador Chromium** para imprimir el PDF: Google Chrome, Microsoft Edge, Chromium o Brave. Se busca solo en las rutas habituales de macOS, Windows y Linux. Si no lo encuentra, indica la ruta con `--navegador RUTA` o con la variable `SQD_NAVEGADOR`.
 
@@ -69,13 +71,13 @@ Códigos de salida: `0` correcto · `1` tabla no válida (o incompleta con `--es
 
 ### Ejemplos
 
-`examples/` contiene tablas reales consultadas el 2026-10-27. No las uses en StrategyQuant: spread y swaps cambian a diario.
+`examples/` contiene tablas reales consultadas el 2026-10-27, con el spread medio de Forex Benchmark del 2026-11-27. No las uses en StrategyQuant: spread y swaps cambian.
 
 | Archivo | Muestra |
 |---|---|
-| `EURUSD.json` | Forex con comisión en EUR convertida a USD con el BCE (`5.59 aprox.`) |
-| `NDX.json` | Índice con tick real 0.1 (tick value ÷ contrato) y spread leído en precio |
-| `XAUUSD.json` | Comisión en porcentaje (0.0025 % por orden → 0.005) |
+| `EURUSD.json` | Forex con comisión en EUR convertida a USD con el BCE (`5.59 aprox.`) y spread medio 0.42 |
+| `NDX.json` | Índice con tick real 0.1 (tick value ÷ contrato); **INCOMPLETA**: Forex Benchmark no publica índices |
+| `XAUUSD.json` | Comisión en porcentaje (0.0025 % por orden → 0.005) y spread medio 48.23 pips de 0.01 |
 | `BTCUSD.json` | Tabla **INCOMPLETA**: datos `PENDIENTE DE VERIFICAR` con su motivo |
 
 Para verlos en PDF:
@@ -93,16 +95,17 @@ Para usar los tuyos, copia el archivo a `~/strategyquant-darwinex-datos/perfil.j
 
 ## Formato del PDF
 
-Título «Configuración de símbolos de StrategyQuant para Darwinex», dos tablas («1. Configuración principal del instrumento» y «2. Comisiones, swaps y rollover») y la firma «Skill created by Kike Argandona». Si hay datos pendientes, el nombre del archivo termina en `_INCOMPLETA`, aparece un aviso bajo el título y las casillas pendientes salen en rojo.
+Título «Configuración de símbolos de StrategyQuant para Darwinex», dos tablas («1. Configuración principal del instrumento» y «2. Comisiones, swaps y rollover»), bajo la primera el origen del spread de cada símbolo («Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones», fecha de consulta y periodo; el instantáneo, aparte) y la firma «Skill created by Kike Argandona». Si hay datos pendientes, el nombre del archivo termina en `_INCOMPLETA`, aparece un aviso bajo el título y las casillas pendientes salen en rojo.
 
 ## Limitaciones
 
-- **Lecturas del momento**: spread y swaps de Darwinex cambian; StrategyQuant aplica un valor fijo a todo el histórico.
+- **Lecturas del momento**: spread medio y swaps cambian; StrategyQuant aplica un valor fijo a todo el histórico.
+- **Spread medio**: Forex Benchmark no tiene API y sus condiciones de uso no permiten consultarlo de forma automática: el valor lo copia el usuario. Solo cubre forex y XAUUSD (XAGUSD y exóticos, con unidad sin comprobar); índices, petróleo y cripto quedan PENDIENTE. No publica la fecha final del periodo ni qué cuenta de Darwinex mide, y el 2026-11-27 avisaba de que estaba recalculando sus datos.
 - **Comisión ida y vuelta**: un administrador de StrategyQuant confirma que la comisión se aplica ida y vuelta, pero no hay página de documentación formal ni prueba en build 143. Ver `reference/verificacion-fuentes.md` para la prueba de una operación que lo cierra.
 - **Point Value convertido** (« aprox.»): usa el tipo del BCE de un día; el tipo real cambia a lo largo del histórico.
 - **Cripto**: Darwinex no publicaba su tabla de cripto el 2026-10-27; esos datos salen PENDIENTE DE VERIFICAR hasta comprobarlos en MT5.
 - **Sistemas probados a mano**: macOS (Darwin 25.6, Python 3.9.6, Google Chrome 156). En Windows y Linux solo se ejecutan las pruebas automáticas de CI; la generación del PDF con un navegador real no se ha comprobado a mano en esos sistemas.
-- **Spread de respaldo**: cuando la tabla de Darwinex no muestra el spread, la skill lee el feed de precios que usa esa misma web (widgets.fxbluelabs.com). No está documentado y puede cambiar o dejar de funcionar sin aviso; entonces se pide una captura de MT5.
+- **Spread instantáneo**: el feed de precios que usa la web de Darwinex (widgets.fxbluelabs.com) no está documentado y puede cambiar sin aviso. Solo da información; nunca va en Default Spread.
 - **Disponibilidad de Darwinex**: la propia tabla de Darwinex indica (2026-11-26) que las cuentas de Forex y CFD no están disponibles para nuevos clientes minoristas residentes en España. Comprueba tu caso antes de usar estos datos.
 - Solo Darwinex y cuenta en USD. Las guías de interfaz describen la build 143; la 144 añade importación directa desde MT5.
 - El validador comprueba formato, fuentes y coherencia interna, **no** que el dato publicado por Darwinex sea correcto. La validación final sigue siendo MT5 → Observación del mercado → Especificación.

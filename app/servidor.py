@@ -6,8 +6,10 @@
     python3 app/servidor.py --puerto 9000
 
 Sirve la aplicación web (app/web/) y la API:
-    GET /api/instrumento?simbolo=EURUSD   consulta las fuentes, prepara y valida la tabla y
-                                          devuelve los datos y el PDF (base64)
+    GET /api/instrumento?simbolo=EURUSD&spread_medio=0.42[&datos_hasta=AAAA-MM-DD]
+                                          consulta las fuentes, prepara y valida la tabla y
+                                          devuelve los datos y el PDF (base64). spread_medio es
+                                          el valor de Forex Benchmark que copia el usuario
     GET /api/salud                        comprobación de vida
 
 Variables: PORT (puerto, para alojamientos), SQD_PERFIL (perfil JSON de la skill).
@@ -60,10 +62,10 @@ class Limitador:
             return True
 
 
-def consultar(simbolo, fuentes, perfil):
+def consultar(simbolo, fuentes, perfil, spread_medio=None, datos_hasta=None):
     """(código HTTP, cuerpo JSON) de /api/instrumento."""
     try:
-        res = instrumento.preparar(simbolo, fuentes, perfil)
+        res = instrumento.preparar(simbolo, fuentes, perfil, spread_medio, datos_hasta)
     except instrumento.ErrorEntrada as e:
         return 400, {"error": {"codigo": "simbolo_no_valido", "mensaje": str(e)}}
     except instrumento.SimboloNoEncontrado as e:
@@ -126,8 +128,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self.enviar_json(429, {"error": {"codigo": "demasiadas_consultas",
                                                         "mensaje": "Demasiadas consultas seguidas. "
                                                                    "Espera un minuto."}})
-            simbolo = parse_qs(url.query).get("simbolo", [""])[0]
-            codigo, datos = consultar(simbolo, self.fuentes, self.perfil)
+            q = parse_qs(url.query)
+            simbolo = q.get("simbolo", [""])[0]
+            codigo, datos = consultar(simbolo, self.fuentes, self.perfil,
+                                      q.get("spread_medio", [""])[0], q.get("datos_hasta", [""])[0])
             return self.enviar_json(codigo, datos)
         if url.path.startswith("/api/"):
             return self.enviar_json(404, {"error": {"codigo": "no_existe", "mensaje": "Ruta desconocida."}})
