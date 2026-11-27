@@ -1,6 +1,6 @@
 # Cambios
 
-## Sin publicar: spread medio de Forex Benchmark (criterio de la academia)
+## 2.3.0 (2026-11-27): spread medio de Forex Benchmark (criterio de la academia)
 
 - **Default Spread = Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** en la skill y en la app. Antes era la lectura instantánea de Darwinex. Reglas, unidades y cobertura en `reference/spread-slippage.md`; verificación del 2026-11-27 en `reference/verificacion-fuentes.md`.
 - **Esquema 3 del JSON**: nueva fuente `promedio` (fuente, bróker, 30 días, 24 horas, comisión excluida, unidad, lectura, `pip_fuente`, fecha y hora de consulta y, opcional, `datos_hasta`). `tabla.py` rechaza cualquier otro criterio y la lectura instantánea como Default Spread. La lectura instantánea pasa a `spread_instantaneo` (opcional, solo informativa).
@@ -13,6 +13,8 @@
 - Sin cambios: comisión (por orden × 2), swaps, triple swap, Pip/Tick, Point Value, perfil (rollover 23:59, MT5, USD, Dukascopy, EST+07).
 - `SKILL.md`: la descripción del encabezado va entre comillas (el «: » de «Perfil predeterminado: MT5» rompía el YAML estricto).
 - Pruebas: skill 68 → 82; app 50 → 58.
+- App «Instrumentos SQX» 2.3.0; descarga en Releases (`instrumentos-sqx-2.3.0.zip`).
+- Pendiente de comprobar dentro de StrategyQuant X build 143: coste del spread y comisión cobrada una sola vez. XAGUSD sigue pendiente (unidad de Forex Benchmark sin contrastar).
 
 ## 2.2.0 (2026-11-27): aplicación «Instrumentos SQX»
 

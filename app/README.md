@@ -4,11 +4,11 @@ Aplicación web instalable (PWA) que prepara los datos de un instrumento de **Da
 
 Se basa en la skill «Instrumentos Darwinex para StrategyQuant X» de este repositorio, que **no se modifica**: la app importa `scripts/tabla.py` (perfil, reglas de validación, columnas y formato del PDF) y aplica las reglas de `reference/`.
 
-> Estado: versión 2.2.0, para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
+> Estado: versión 2.3.0 (Default Spread = spread medio de Forex Benchmark), para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
 
 ## Descargar
 
-Descarga: [instrumentos-sqx-2.2.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.2.0/instrumentos-sqx-2.2.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
+Descarga: [instrumentos-sqx-2.3.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.3.0/instrumentos-sqx-2.3.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
 
 Descomprímelo, abre una terminal en la carpeta y ejecuta `python3 app/servidor.py` (detalles en «Ejecutarla en local»).
 
