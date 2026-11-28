@@ -12,7 +12,7 @@ import urllib.error
 import zlib
 from pathlib import Path
 
-from apoyo import APP, PERFIL, medias_bytes, fuentes_simuladas, respuesta, tabla
+from apoyo import APP, JUEVES, PERFIL, en_hora, medias_bytes, fuentes_simuladas, respuesta, tabla
 from sqx import fuentes as F
 from sqx import instrumento as I
 from sqx import pdf
@@ -72,8 +72,9 @@ class TestPdf(unittest.TestCase):
         self.assertIn(b"/Annots", paginas[1])
 
     def test_pdf_incompleto(self):
-        rs, datos = self.generar("EURUSD", "BTCUSD", sustituir={
-            "https://raw.githubusercontent.com": medias_bytes(quitar=("BTCUSD",))})
+        with en_hora(JUEVES):  # mercado abierto: sin media, Default Spread queda pendiente
+            rs, datos = self.generar("EURUSD", "BTCUSD", sustituir={
+                "https://raw.githubusercontent.com": medias_bytes(quitar=("BTCUSD",))})
         t = " ".join(textos_pdf(datos))
         self.assertIn("BTCUSD: Datos incompletos · faltan: Default Spread, Swap largo, Swap corto", t)
         self.assertIn("BTCUSD: Default Spread PENDIENTE DE VERIFICAR. El muestreo automático todavía", t)

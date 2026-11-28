@@ -4,11 +4,11 @@ Aplicación web instalable (PWA) que prepara los datos de un instrumento de **Da
 
 Se basa en la skill «Instrumentos Darwinex para StrategyQuant X» de este repositorio, que **no se modifica**: la app importa `scripts/tabla.py` (perfil, reglas de validación, columnas y formato del PDF) y aplica las reglas de `reference/`.
 
-> Estado: versión 2.4.0 (Default Spread = spread medio automático de Darwinex, sin escribir nada), para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
+> Estado: versión 2.5.0 (Default Spread = spread medio automático de Darwinex, sin escribir nada; con el mercado cerrado y la media pendiente, el último spread antes del cierre), para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
 
 ## Descargar
 
-Descarga: [instrumentos-sqx-2.4.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.4.0/instrumentos-sqx-2.4.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
+Descarga: [instrumentos-sqx-2.5.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.5.0/instrumentos-sqx-2.5.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
 
 Descomprímelo, abre una terminal en la carpeta y ejecuta `python3 app/servidor.py` (detalles en «Ejecutarla en local»).
 
@@ -24,7 +24,7 @@ Descomprímelo, abre una terminal en la carpeta y ejecuta `python3 app/servidor.
 3. Aplica las reglas de la skill, registra cada valor con su fuente y lo valida con `tabla.validar()`. Lo que no tiene evidencia queda **PENDIENTE DE VERIFICAR**.
 4. Muestra los valores (con su origen: dato del bróker, spread medio de 30 días, lectura instantánea informativa, cálculo, regla o ajuste personal) y el botón **Descargar PDF**.
 
-**Default Spread** = **Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones** (reglas en [reference/spread-slippage.md](../reference/spread-slippage.md)). Cubre forex, índices, metales, petróleo, gas y cripto. Cada símbolo necesita 48 muestras (unas 12 horas de mercado abierto) antes de tener valor; mientras tanto queda **PENDIENTE DE VERIFICAR** y se rellena solo. El muestreo empezó el 2026-11-28: hasta el 2026-12-27 la media cubre menos de 30 días y la ficha lo indica. Antes (2.3.0) el valor se copiaba a mano de Forex Benchmark, cuyas condiciones de uso no permiten consultarlo de forma automática.
+**Default Spread** = **Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones** (reglas en [reference/spread-slippage.md](../reference/spread-slippage.md)). Cubre forex, índices, metales, petróleo, gas y cripto. Cada símbolo necesita 48 muestras (unas 12 horas de mercado abierto) antes de tener valor; mientras tanto queda **PENDIENTE DE VERIFICAR** y se rellena solo. Si el mercado está cerrado, en vez de quedar pendiente lleva, de forma provisional, el **último spread antes del cierre** («X pips · último spread · mercado cerrado»), válido hasta que el mercado reabra. El muestreo empezó el 2026-11-28: hasta el 2026-12-27 la media cubre menos de 30 días y la ficha lo indica. Antes (2.3.0) el valor se copiaba a mano de Forex Benchmark, cuyas condiciones de uso no permiten consultarlo de forma automática.
 
 El PDF (A4 apaisado) está pensado para rellenar StrategyQuant X directamente:
 

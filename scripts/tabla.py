@@ -14,6 +14,8 @@ El PDF lleva dos tablas:
   tabla.py migrar <SIMBOLO|json> [...]      pasa un JSON antiguo (v1 o v2) al esquema 3
   tabla.py spread <SIMBOLO>                 descarga el spread medio automático (muestreo ISQX)
                                             y muestra el valor y la fuente listos para el JSON
+                                            (mercado cerrado y media pendiente: último spread
+                                            antes del cierre, provisional)
   tabla.py perfil                           muestra el perfil activo y sus ajustes personales
   tabla.py navegador                        muestra el navegador que imprimirá el PDF
   tabla.py rutas
@@ -74,6 +76,13 @@ ETIQUETA_MUESTREO = ("Spread medio de 30 días — 24 horas — Darwinex — mue
                      "cada 15 min — sin comisiones")
 # Mínimo de muestras con mercado abierto (unas 12 horas) para dar la media por buena
 MIN_MUESTRAS = 48
+# Mercado cerrado y media aún pendiente: Default Spread provisional = último spread de la última
+# sesión abierta (ask − bid de la última cotización antes del cierre), hasta que el mercado reabra.
+# El muestreo lo publica en medias.json («cierres»); la app también puede leerlo del feed.
+CRITERIO_CIERRE = {"fuente": FUENTE_MUESTREO, "broker": "Darwinex", "comision": "excluida",
+                   "unidad": "pips"}
+ETIQUETA_CIERRE = ("Último spread de Darwinex con el mercado abierto (provisional: mercado cerrado "
+                   "y spread medio aún pendiente) — sin comisiones")
 # Criterio anterior (Forex Benchmark), aceptado por compatibilidad
 URL_FXB = "https://forexbenchmark.com/brokers/historic_spreads/"
 CRITERIO_SPREAD = {"fuente": "Forex Benchmark", "broker": "Darwinex", "periodo_dias": "30",
@@ -129,8 +138,14 @@ def es_muestreo(f):
     return isinstance(f, dict) and f.get("fuente") == FUENTE_MUESTREO
 
 
+def es_cierre(f):
+    return isinstance(f, dict) and f.get("tipo") == "cierre"
+
+
 def etiqueta_spread(f=None):
     """Etiqueta del spread medio según su fuente (por defecto, el muestreo automático)."""
+    if es_cierre(f):
+        return ETIQUETA_CIERRE
     return ETIQUETA_SPREAD if isinstance(f, dict) and f.get("fuente") == "Forex Benchmark" \
         else ETIQUETA_MUESTREO
 
@@ -144,6 +159,9 @@ def dias_periodo(f):
 
 def periodo_spread(f):
     """Periodo que cubre el spread medio (no es la fecha de consulta)."""
+    if es_cierre(f):
+        return (f"última cotización antes del cierre del {f.get('cierre_utc')} UTC · vale hasta "
+                f"que el mercado reabra ({f.get('reabre_utc')} UTC)")
     if es_muestreo(f):
         texto = (f"del {f.get('desde')} al {f.get('hasta')} · {f.get('muestras')} muestras cada "
                  f"{f.get('intervalo_min', INTERVALO_MUESTREO)} min con el mercado abierto")
@@ -183,11 +201,12 @@ NUMERICOS = {"pip_tick": (">0", False), "no_pip_tick": (">0", False), "point_val
              "spread": (">=0", False), "comision": (">=0", True),
              "swap_largo": ("±", True), "swap_corto": ("±", True)}
 SIGNO_AJUSTES = {"slippage": ">=0", "min_dist": ">=0", "order_mult": ">0", "order_step": ">0"}
-TIPOS_FUENTE = {"dato", "observado", "promedio", "calculo", "regla", "pendiente"}
+TIPOS_FUENTE = {"dato", "observado", "promedio", "cierre", "calculo", "regla", "pendiente"}
 UNIDADES_SPREAD = {"pips", "puntos", "precio"}
 CLAVES_TABLA = ({"esquema", "simbolo", "consulta", "creada", "fuentes", "notas", "spread_instantaneo"}
                 | set(CAMPOS))
-CLAVES_EXTRA_FUENTE = {"nota", "texto_v1", "desde", "hasta", "muestras", "intervalo_min"}
+CLAVES_EXTRA_FUENTE = {"nota", "texto_v1", "desde", "hasta", "muestras", "intervalo_min",
+                       "cierre_utc", "reabre_utc"}
 
 RE_NUM = re.compile(r"^-?\d+(\.\d+)?$")
 RE_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -483,9 +502,12 @@ def validar_fuente(campo, f, valor_pend, consulta, r):
                          "24 horas, sin comisiones; «tabla.py spread <SÍMBOLO>»), no una lectura "
                          "instantánea; la lectura instantánea va en «spread_instantaneo»")
         return None
-    if campo == "spread" and tipo != "promedio":
+    if campo == "spread" and tipo not in ("promedio", "cierre"):
         r.errores.append(f"{pre}: el spread debe ser el spread medio («promedio», de «tabla.py spread "
-                         "<SÍMBOLO>») o «pendiente»")
+                         "<SÍMBOLO>»), el último spread con el mercado cerrado («cierre») o «pendiente»")
+        return None
+    if tipo == "cierre" and campo != "spread":
+        r.errores.append(f"{pre}: «cierre» es solo para Default Spread")
         return None
     if tipo == "promedio" and campo != "spread":
         r.errores.append(f"{pre}: «promedio» es solo para Default Spread")
@@ -495,6 +517,8 @@ def validar_fuente(campo, f, valor_pend, consulta, r):
         return None
     if tipo == "promedio":
         validar_promedio(pre, f, consulta, r)
+    elif tipo == "cierre":
+        validar_cierre(pre, f, consulta, r)
     elif tipo in ("dato", "observado"):
         if not texto_ok(f.get("url")):
             r.errores.append(f"{pre}.url: falta la fuente consultada")
@@ -563,6 +587,56 @@ def validar_promedio(pre, f, consulta, r):
                             f"días antes de la consulta ({fecha})")
 
 
+def leer_utc(v):
+    """datetime UTC de «AAAA-MM-DD HH:MM», o None."""
+    try:
+        return dt.datetime.strptime(str(v), "%Y-%m-%d %H:%M").replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+def validar_cierre(pre, f, consulta, r):
+    """Último spread con el mercado cerrado: solo vale entre el cierre y la reapertura."""
+    for k, v in CRITERIO_CIERRE.items():
+        if f.get(k) != v:
+            r.errores.append(f"{pre}.{k}: «{f.get(k)}»; el criterio es «{v}» ({ETIQUETA_CIERRE})")
+    if not texto_ok(f.get("url")):
+        r.errores.append(f"{pre}.url: falta la fuente consultada")
+    fecha = validar_fecha_fuente(f"{pre}.fecha", f.get("fecha"), consulta, r)
+    err = hora_real(f.get("hora_utc"))
+    if err:
+        r.errores.append(f"{pre}.hora_utc: {err}")
+    _, _, e = parse_num(f.get("lectura"), ">=0", False)
+    if e:
+        r.errores.append(f"{pre}.lectura (último spread, en pips): {e}")
+    _, _, e = parse_num(f.get("pip_fuente"), ">0", False)
+    if e:
+        r.errores.append(f"{pre}.pip_fuente (Pip/Tick Size con el que se midió): {e}")
+    cierre, reabre = leer_utc(f.get("cierre_utc")), leer_utc(f.get("reabre_utc"))
+    for k, v in (("cierre_utc", cierre), ("reabre_utc", reabre)):
+        if v is None:
+            r.errores.append(f"{pre}.{k}: «{f.get(k)}»; formato AAAA-MM-DD HH:MM (UTC)")
+    if cierre is None or reabre is None:
+        return
+    if cierre >= reabre:
+        r.errores.append(f"{pre}: el cierre ({f['cierre_utc']}) no es anterior a la reapertura "
+                         f"({f['reabre_utc']})")
+        return
+    if fecha and not err:
+        momento = leer_utc(f"{fecha.isoformat()} {f.get('hora_utc')}")
+        if momento and momento >= reabre:
+            r.errores.append(f"{pre}: consultado el {fecha} {f.get('hora_utc')} UTC, con el mercado "
+                             f"ya reabierto ({f['reabre_utc']} UTC): vuelve a pedir el spread "
+                             "(«tabla.py spread <SÍMBOLO>»)")
+            return
+        if momento and momento < cierre:
+            r.errores.append(f"{pre}: consultado antes del cierre ({f['cierre_utc']} UTC)")
+            return
+    r.avisos.append(f"Default Spread provisional: último spread antes del cierre del "
+                    f"{f['cierre_utc']} UTC (mercado cerrado y spread medio aún pendiente); se "
+                    "sustituye por el spread medio en cuanto haya muestras")
+
+
 def validar_muestreo(pre, f, consulta, r):
     """Spread medio del muestreo automático: criterio, número de muestras y periodo."""
     for k, v in CRITERIO_MUESTREO.items():
@@ -619,9 +693,46 @@ def redondear_spread(n):
     return format(v, "f")
 
 
+def spread_desde_cierre(simbolo, cierre, pip, ahora, url=URL_DATOS_SPREAD):
+    """(valor, fuente «cierre») con el último spread antes del cierre, o None si no vale: no hay
+    dato, el Pip/Tick Size no coincide o el mercado ya reabrió. cierre: entrada de «cierres» de
+    medias.json ({spread, pip, cierre_utc, reabre_utc, bid, ask})."""
+    if not isinstance(cierre, dict):
+        return None
+    reabre, cerro = leer_utc(cierre.get("reabre_utc")), leer_utc(cierre.get("cierre_utc"))
+    try:
+        pip_c = Decimal(str(cierre.get("pip")))
+        lectura = Decimal(str(cierre.get("spread")))
+    except ArithmeticError:
+        return None
+    if (reabre is None or cerro is None or not cerro <= ahora < reabre or lectura < 0
+            or pip is None or Decimal(str(pip)) != pip_c):
+        return None
+    cotizacion = (f"ask {cierre.get('ask')} − bid {cierre.get('bid')}; "
+                  if cierre.get("bid") and cierre.get("ask") else "")
+    return redondear_spread(lectura), {
+        "tipo": "cierre", **CRITERIO_CIERRE, "url": url,
+        "fecha": ahora.date().isoformat(), "hora_utc": ahora.strftime("%H:%M"),
+        "lectura": format(lectura.normalize(), "f"), "pip_fuente": format(pip_c.normalize(), "f"),
+        "cierre_utc": cierre["cierre_utc"], "reabre_utc": cierre["reabre_utc"],
+        "nota": (f"{cotizacion}última cotización de Darwinex antes del cierre; provisional: el "
+                 "spread medio aún no tiene muestras suficientes y el mercado está cerrado")}
+
+
 def spread_desde_medias(simbolo, medias, pip, ahora):
     """(valor, fuente) de Default Spread a partir de medias.json del muestreo automático. Si no hay
-    media utilizable, (PEND, fuente «pendiente») con el motivo. pip: Pip/Tick Size de la tabla."""
+    media utilizable y el mercado está cerrado, el último spread antes del cierre («cierres»). Si
+    tampoco, (PEND, fuente «pendiente») con el motivo. pip: Pip/Tick Size de la tabla."""
+    valor, f = _spread_medio(simbolo, medias, pip, ahora)
+    if es_pendiente(valor) and isinstance(medias, dict):
+        c = spread_desde_cierre(simbolo, (medias.get("cierres") or {}).get(str(simbolo or "").upper()),
+                                pip, ahora)
+        if c:
+            return c
+    return valor, f
+
+
+def _spread_medio(simbolo, medias, pip, ahora):
     s = str(simbolo or "").upper()
     info = (medias.get("simbolos") or {}).get(s) if isinstance(medias, dict) else None
     inicio = medias.get("inicio") if isinstance(medias, dict) else None
@@ -812,6 +923,15 @@ def coherencia(d, fu, nums, aprox, tipos_fuente, r):
         elif not e1 and redondear_spread(lect) != format(sp, "f") and not casi_igual(lect, sp):
             r.errores.append(f"spread {sp} no cuadra con la media del muestreo ({lect} pips): "
                              f"redondeada da {redondear_spread(lect)}")
+    elif sp is not None and pip and tipos_fuente.get("spread") == "cierre":
+        lect, _, e1 = parse_num(f_sp.get("lectura"), ">=0", False)
+        pfu, _, e2 = parse_num(f_sp.get("pip_fuente"), ">0", False)
+        if not e2 and pfu != pip:
+            r.errores.append(f"fuentes.spread.pip_fuente: {pfu}; el último spread debe medirse en el "
+                             f"mismo Pip/Tick Size de la tabla ({pip})")
+        elif not e1 and redondear_spread(lect) != format(sp, "f") and not casi_igual(lect, sp):
+            r.errores.append(f"spread {sp} no cuadra con el último spread ({lect} pips): "
+                             f"redondeado da {redondear_spread(lect)}")
     elif sp is not None and pip and tipos_fuente.get("spread") == "promedio":
         pip_fxb = pip_forex_benchmark(d.get("simbolo"))
         lect, _, e1 = parse_num(f_sp.get("lectura"), ">=0", False)
@@ -1281,7 +1401,8 @@ def cmd_spread(a):
     medias = descargar_medias(a.url or URL_DATOS_SPREAD)
     s = a.simbolo.upper()
     info = medias["simbolos"].get(s)
-    pip = a.pip or (info or {}).get("pip")
+    cierre = (medias.get("cierres") or {}).get(s)
+    pip = a.pip or (info or {}).get("pip") or (cierre if isinstance(cierre, dict) else {}).get("pip")
     valor, fuente = spread_desde_medias(s, medias, pip, dt.datetime.now(dt.timezone.utc))
     print(json.dumps({"spread": valor, "fuentes": {"spread": fuente}}, ensure_ascii=False, indent=2))
     if es_pendiente(valor):
@@ -1289,6 +1410,9 @@ def cmd_spread(a):
         return 1
     print(f"OK {s}: {valor} pips · {etiqueta_spread(fuente)} · periodo: {periodo_spread(fuente)}",
           file=sys.stderr)
+    if es_cierre(fuente):
+        print("AVISO: valor provisional; con el mercado abierto y muestras suficientes, vuelve a "
+              "pedirlo y saldrá el spread medio", file=sys.stderr)
     return 0
 
 

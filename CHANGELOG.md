@@ -1,5 +1,14 @@
 # Cambios
 
+## 2.5.0 (2026-11-28): último spread con el mercado cerrado
+
+- **Mercado cerrado y spread medio pendiente → Default Spread = último spread de la última sesión abierta** (ask − bid de la última cotización de Darwinex antes del cierre, en pips, sin comisiones), provisional hasta la reapertura. Nueva fuente `cierre` (`cierre_utc`, `reabre_utc`); `tabla.validar` la rechaza si se consultó con el mercado ya abierto y siempre avisa de que es provisional. La media, cuando existe, tiene prioridad.
+- **Muestreo**: `medias.json` incluye `cierres` con el último spread, la hora de cierre y la de reapertura de cada símbolo cerrado (horario de Darwinex, también pausas diarias).
+- **Skill**: `tabla.py spread <SÍMBOLO>` lo devuelve listo para el JSON (aunque el símbolo aún no tenga ninguna muestra). **App**: si `medias.json` aún no lo trae, lo calcula con el feed y el horario de Darwinex; PDF «X pips · último spread · mercado cerrado».
+- Pruebas: la hora queda fija donde el resultado depende de si el mercado está abierto (antes fallaban en fin de semana). Skill 90 → 96; app 69 → 74.
+- App «Instrumentos SQX» 2.5.0; descarga en Releases (`instrumentos-sqx-2.5.0.zip`).
+- Ramas ya fusionadas borradas (`spread-medio-automatico`, `spread-medio-forex-benchmark`, `version-2.3.0`); se conserva `datos-spread`.
+
 ## 2.4.0 (2026-11-28): spread medio automático, sin escribir nada
 
 - **Default Spread = Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones.** Nadie lo escribe: la tarea programada `.github/workflows/spread-medio.yml` lee cada 15 minutos el bid/ask de Darwinex (el feed que usa su web) para todos sus símbolos, guarda ask − bid en pips del Pip/Tick Size de la tabla solo con el mercado abierto (horario de Darwinex) y si la cotización cambió, y publica `medias.json` en la rama `datos-spread`.

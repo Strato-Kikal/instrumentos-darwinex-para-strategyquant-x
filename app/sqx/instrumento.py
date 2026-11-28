@@ -74,7 +74,8 @@ ETIQUETAS.update({"pip_tick": "Pip/Tick Size", "no_pip_tick": "Pip/Tick Step",
                   "tipo_swap": "Tipo de swap", "cobro_swap": "Cobro del swap (Darwinex)"})
 EXTRAS = ["tipo_swap", "cobro_swap"]
 ORIGENES = {"dato": "Dato del bróker", "observado": "Lectura instantánea (informativa)",
-            "promedio": "Spread medio · 30 días", "calculo": "Cálculo",
+            "promedio": "Spread medio · 30 días", "cierre": "Último spread · mercado cerrado",
+            "calculo": "Cálculo",
             "regla": "Regla de formato", "pendiente": "Pendiente de verificar",
             "ajuste": "Ajuste personal"}
 
@@ -199,6 +200,7 @@ class Preparacion:
         self.simbolo, self.fuentes, self.perfil = simbolo, fuentes, perfil
         self.ahora = ahora or ahora_utc()
         self.inst = None  # (valor, fuente) del spread instantáneo, si se pudo leer
+        self.cotizacion = None  # (bid, ask, url) del feed de precios, si se pudo leer
         self.d, self.fu, self.notas, self.avisos, self.consultas = {}, {}, [], [], []
         # Casillas que no forman parte del JSON de la skill (esquema 2), con la misma forma de fuente
         self.x, self.fx = {}, {}
@@ -413,9 +415,16 @@ class Preparacion:
                                "Default Spread queda pendiente. Vuelve a intentarlo en un rato.")
             return self.pend("spread", f"no se pudo descargar el spread medio automático ({e.motivo})")
         valor, f = tabla.spread_desde_medias(self.ticker, medias, self.pip(), self.ahora)
+        if tabla.es_pendiente(valor):
+            valor, f = self.spread_cierre_local() or (valor, f)
         self.d["spread"], self.fu["spread"] = valor, f
         if tabla.es_pendiente(valor):
             self.consulta(nombre, url, hora, "sin datos", f["motivo"])
+            return
+        if tabla.es_cierre(f):
+            # El aviso de valor provisional lo añade tabla.validar()
+            self.consulta(nombre, url, hora, "correcto",
+                          f"mercado cerrado: último spread {f['lectura']} pips · {tabla.periodo_spread(f)}")
             return
         self.consulta(nombre, url, hora, "correcto",
                       f"{f['lectura']} pips de media · {tabla.periodo_spread(f)}")
@@ -423,6 +432,17 @@ class Preparacion:
             self.avisos.append(f"El spread medio cubre de momento {tabla.dias_periodo(f)} días "
                                f"({f['desde']} → {f['hasta']}): el muestreo automático empezó hace "
                                "poco y la media llegará sola a 30 días.")
+
+    def spread_cierre_local(self):
+        """Si el muestreo aún no publicó el cierre de este símbolo, el último spread antes del
+        cierre a partir de la cotización que da ahora el feed (con el mercado cerrado, la última)."""
+        from . import muestreo  # importación tardía: muestreo importa este módulo
+        pip = self.pip()
+        if not self.cotizacion or pip is None:
+            return None
+        bid, ask, url = self.cotizacion
+        e = muestreo.entrada_cierre(self.r, bid, ask, pip, self.ahora)
+        return tabla.spread_desde_cierre(self.ticker, e, pip, self.ahora, url) if e else None
 
     def leer_spread_instantaneo(self):
         """Spread instantáneo del feed de precios de Darwinex: solo informativo."""
@@ -439,6 +459,7 @@ class Preparacion:
             self.consulta(nombre, url, hora, "sin datos", f"sin cotización para {self.ticker}")
             return
         bid, ask = precio
+        self.cotizacion = (bid, ask, url)
         lectura = ask - bid
         self.consulta(nombre, url, hora, "correcto", f"bid {txt(bid)} · ask {txt(ask)}")
         if lectura < 0:
@@ -618,6 +639,11 @@ def explicar(fuente):
         return ORIGENES[t], (f"{fuente.get('url')} · {fuente.get('fecha')} {fuente.get('hora_utc')} UTC · "
                              f"lectura {fuente.get('lectura')} ({fuente.get('unidad')}) ÷ Pip/Tick Size · "
                              f"{fuente.get('nota', '')}").rstrip(" ·")
+    if t == "cierre":
+        return ORIGENES[t], (f"{tabla.ETIQUETA_CIERRE} · {fuente.get('url')} · consultado el "
+                             f"{fuente.get('fecha')} {fuente.get('hora_utc')} UTC · "
+                             f"{tabla.periodo_spread(fuente)} · {fuente.get('lectura')} pips de "
+                             f"{fuente.get('pip_fuente')} · {fuente.get('nota', '')}").rstrip(" ·")
     if t == "promedio" and tabla.es_muestreo(fuente):
         return ORIGENES[t], (f"{tabla.etiqueta_spread(fuente)} · {fuente.get('url')} · consultado el "
                              f"{fuente.get('fecha')} {fuente.get('hora_utc')} UTC · periodo: "
@@ -698,7 +724,9 @@ def textos(tabla_d, perfil, extras):
     t.update({k: v for k, (v, _) in extras.items()})
     t.update(perfil.ajustes)
     fu = tabla_d["fuentes"]
-    if not tabla.es_pendiente(t["spread"]):
+    if tabla.es_cierre(fu.get("spread")):
+        t["spread"] = f"{t['spread']} pips\núltimo spread · mercado cerrado"
+    elif not tabla.es_pendiente(t["spread"]):
         t["spread"] = f"{t['spread']} pips\nmedio 30 días · 24 h"
     if "spread_instantaneo" in tabla_d:
         f = fu["spread_instantaneo"]
@@ -729,7 +757,12 @@ def pruebas_sqx(tabla_d, perfil):
     """Comprobaciones que solo se pueden hacer dentro de StrategyQuant X."""
     pruebas = []
     sp = tabla_d["spread"]
-    if not tabla.es_pendiente(sp):
+    if tabla.es_cierre(tabla_d["fuentes"].get("spread")):
+        pruebas.append(f"Spread: Default Spread = {sp} pips, provisional (último spread antes del "
+                       "cierre, sin comisiones). Cuando el mercado reabra y haya muestras, vuelve a "
+                       "preparar la tabla para tener el spread medio. La comisión va en su casilla; "
+                       "comprueba que el backtest no la cobra dos veces.")
+    elif not tabla.es_pendiente(sp):
         pruebas.append(f"Spread: Default Spread = {sp} pips (spread medio, sin comisiones). La "
                        "comisión va en su casilla; comprueba que el backtest no la cobra dos veces.")
     c = tabla_d["comision"]

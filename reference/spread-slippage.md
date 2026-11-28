@@ -25,10 +25,12 @@ Cada 15 minutos, la tarea programada:
 3. guarda `(ask − bid) ÷ Pip/Tick Size` solo si el mercado está abierto según el horario de Darwinex **y** la cotización ha cambiado desde la muestra anterior (así no cuentan fines de semana, festivos ni pausas);
 4. publica en `medias.json` la media, el número de muestras, el periodo (`desde`, `hasta`) y el mínimo y el máximo de cada símbolo.
 
-- **En la skill**: `python3 -I "SK/scripts/tabla.py" spread <SÍMBOLO>` descarga `medias.json` y muestra el `spread` y su fuente listos para pegar en el JSON. Si sale PENDIENTE, no hay muestras suficientes todavía.
+- **En la skill**: `python3 -I "SK/scripts/tabla.py" spread <SÍMBOLO>` descarga `medias.json` y muestra el `spread` y su fuente listos para pegar en el JSON. Si sale PENDIENTE, no hay muestras suficientes todavía y el mercado está abierto.
 - **En la app**: se consulta sola al pulsar «Obtener datos».
 
-**Mínimo**: 48 muestras (unas 12 horas de mercado abierto). Con menos, Default Spread queda PENDIENTE y se rellena solo más adelante.
+**Mínimo**: 48 muestras (unas 12 horas de mercado abierto). Con menos, Default Spread queda PENDIENTE y se rellena solo más adelante, salvo con el mercado cerrado (abajo).
+
+**Mercado cerrado y media pendiente** (desde el 2026-11-28): Default Spread lleva, de forma **provisional**, el **último spread de la última sesión abierta**: ask − bid de la última cotización de Darwinex antes del cierre (con el mercado cerrado el feed sigue dando esa cotización; si no la da, la última muestra guardada), en pips del Pip/Tick Size de la tabla y sin comisiones. Fuente `cierre`, con `cierre_utc` (hora del cierre según el horario de Darwinex) y `reabre_utc` (reapertura). En cada ronda, el muestreo la publica en `medias.json` («cierres») para los símbolos cerrados; la app, si aún no está publicada, la calcula con el feed y el horario de Darwinex. Solo vale hasta la reapertura: después, la tabla vuelve a PENDIENTE hasta tener 48 muestras, y `tabla.py validar` rechaza un valor `cierre` consultado con el mercado ya abierto. En cuanto hay media, la media tiene prioridad. El PDF lo indica («último spread · mercado cerrado»).
 
 **Arranque**: el muestreo empezó el 2026-11-28. Hasta que acumule 30 días, la media cubre los días que lleva; la ficha lo dice («el muestreo empezó hace N días») y el script avisa. A partir del 2026-12-27 la media ya es de 30 días completos.
 

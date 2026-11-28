@@ -118,6 +118,7 @@ button:focus-visible { outline: 3px solid var(--linea); outline-offset: 2px; }
 .o-dato { background: var(--azul-claro); color: var(--azul); }
 .o-observado { background: var(--verde-claro); color: var(--verde); }
 .o-promedio { background: var(--azul-claro); color: var(--azul); border: 1px solid var(--linea); }
+.o-cierre { background: var(--azul-claro); color: var(--azul); border: 1px dashed var(--azul); }
 .o-calculo { background: var(--ambar-claro); color: var(--ambar); }
 .o-regla { background: color-mix(in srgb, var(--suave) 18%, transparent); color: var(--suave); }
 .o-ajuste { background: color-mix(in srgb, var(--azul) 14%, transparent); color: var(--texto); border: 1px dashed var(--linea); }

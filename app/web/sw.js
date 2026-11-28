@@ -1,7 +1,7 @@
 "use strict";
 // Service worker de Instrumentos SQX. Guarda solo la interfaz para que abra rápido y se pueda
 // instalar. Los datos (api/) nunca se guardan: siempre se consultan en el momento.
-const CACHE = "instrumentos-sqx-v4";
+const CACHE = "instrumentos-sqx-v5";
 const INTERFAZ = ["./", "index.html", "estilos.css", "app.js", "manifest.webmanifest",
   "iconos/icono.svg", "iconos/icono-192.png", "iconos/icono-512.png", "iconos/apple-touch-icon.png"];
 

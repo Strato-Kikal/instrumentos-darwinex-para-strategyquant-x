@@ -629,6 +629,90 @@ class TestSpreadAutomatico(unittest.TestCase):
             self.assertEqual(tabla.main(["spread", "NDX", "--url", ruta.as_uri()]), 1)
         shutil.rmtree(ruta.parent)
 
+
+def con_cierre(antes=1, despues=1, **cambios):
+    """medias.json con pocas muestras de EURUSD y su último spread antes del cierre; el cierre
+    fue hace «antes» horas y reabre dentro de «despues» horas."""
+    ahora = dt.datetime.now(dt.timezone.utc)
+    m = medias(muestras=10)
+    c = {"spread": "0.8", "pip": "0.0001", "bid": "1.1", "ask": "1.10008",
+         "cierre_utc": (ahora - dt.timedelta(hours=antes)).strftime("%Y-%m-%d %H:%M"),
+         "reabre_utc": (ahora + dt.timedelta(hours=despues)).strftime("%Y-%m-%d %H:%M")}
+    c.update(cambios)
+    m["cierres"] = {"EURUSD": c}
+    return m, ahora
+
+
+class TestSpreadMercadoCerrado(unittest.TestCase):
+    """Mercado cerrado y media pendiente: último spread de la última sesión abierta."""
+
+    def tabla_cierre(self, **kw):
+        m, ahora = con_cierre(**kw)
+        d = ejemplo("EURUSD")
+        d["spread"], d["fuentes"]["spread"] = tabla.spread_desde_medias("EURUSD", m, "0.0001", ahora)
+        d["consulta"] = d["creada"] = ahora.date().isoformat()
+        return d
+
+    def test_rellena_con_el_ultimo_spread(self):
+        d = self.tabla_cierre()
+        f = d["fuentes"]["spread"]
+        self.assertEqual((d["spread"], f["tipo"], f["lectura"]), ("0.80", "cierre", "0.8"))
+        r = tabla.validar(d, PERFIL)
+        self.assertEqual((r.estado, r.errores), ("COMPLETA", []))
+        self.assertTrue(any("provisional" in a for a in r.avisos))
+        self.assertEqual(tabla.etiqueta_spread(f), tabla.ETIQUETA_CIERRE)
+        self.assertIn("última cotización antes del cierre", tabla.lineas_spread(d)[0])
+
+    def test_la_media_tiene_prioridad(self):
+        m, ahora = con_cierre()
+        m["simbolos"]["EURUSD"]["muestras"] = 2000
+        v, f = tabla.spread_desde_medias("EURUSD", m, "0.0001", ahora)
+        self.assertEqual((v, f["tipo"]), ("0.42", "promedio"))
+
+    def test_mercado_ya_reabierto_queda_pendiente(self):
+        m, ahora = con_cierre(antes=3, despues=-1)
+        v, f = tabla.spread_desde_medias("EURUSD", m, "0.0001", ahora)
+        self.assertEqual(v, tabla.PEND)
+        self.assertIn("se rellena solo", f["motivo"])
+
+    def test_pip_distinto_queda_pendiente(self):
+        m, ahora = con_cierre()
+        self.assertEqual(tabla.spread_desde_medias("EURUSD", m, "0.01", ahora)[0], tabla.PEND)
+
+    def test_validacion(self):
+        d = self.tabla_cierre()
+        f = d["fuentes"]["spread"]
+        momento = dt.datetime.strptime(f["reabre_utc"], "%Y-%m-%d %H:%M")
+        if momento.date().isoformat() == f["fecha"]:  # misma fecha: consulta después de reabrir
+            f["hora_utc"] = (momento + dt.timedelta(minutes=1)).strftime("%H:%M")
+            self.assertTrue(any("ya reabierto" in x for x in errores(d)))
+        d = self.tabla_cierre()
+        d["spread"] = "0.55"
+        self.assertTrue(any("no cuadra con el último spread" in x for x in errores(d)))
+        d = self.tabla_cierre()
+        d["fuentes"]["spread"]["reabre_utc"] = d["fuentes"]["spread"]["cierre_utc"]
+        self.assertTrue(any("no es anterior a la reapertura" in x for x in errores(d)))
+        d = self.tabla_cierre()
+        d["fuentes"]["spread"]["comision"] = "incluida"
+        self.assertTrue(any("spread.comision" in x for x in errores(d)))
+        d = ejemplo("EURUSD")
+        d["fuentes"]["swap_largo"] = dict(self.tabla_cierre()["fuentes"]["spread"])
+        self.assertTrue(any("solo para Default Spread" in x for x in errores(d)))
+
+    def test_orden_spread(self):
+        m, _ = con_cierre()
+        del m["simbolos"]["EURUSD"]  # aún sin ninguna muestra: el pip sale del cierre
+        ruta = Path(tempfile.mkdtemp()) / "medias.json"
+        ruta.write_text(json.dumps(m), encoding="utf-8")
+        salida, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(salida), redirect_stderr(err):
+            codigo = tabla.main(["spread", "EURUSD", "--url", ruta.as_uri()])
+        shutil.rmtree(ruta.parent)
+        self.assertEqual(codigo, 0, err.getvalue())
+        self.assertEqual(json.loads(salida.getvalue())["fuentes"]["spread"]["tipo"], "cierre")
+        self.assertIn("provisional", err.getvalue())
+
+
 class TestCli(unittest.TestCase):
     """La herramienta completa, como la llama Claude."""
 

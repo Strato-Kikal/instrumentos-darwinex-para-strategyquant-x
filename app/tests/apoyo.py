@@ -1,8 +1,10 @@
 """Utilidades comunes de las pruebas: fuentes simuladas con respuestas reales guardadas."""
+import contextlib
 import datetime as dt
 import json
 import sys
 from pathlib import Path
+from unittest import mock
 
 APP = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(APP))
@@ -31,6 +33,20 @@ def medias(dias=30, muestras=1900, quitar=(), valores=None):
     return {"fuente": tabla.FUENTE_MUESTREO, "broker": "Darwinex", "periodo_dias": 30,
             "intervalo_min": 15, "inicio": desde, "generado_utc": f"{hoy} 10:00",
             "simbolos": simbolos}
+
+
+@contextlib.contextmanager
+def en_hora(momento):
+    """Fija la hora actual (UTC) de la app durante la prueba: el spread depende de si el mercado
+    está abierto."""
+    with mock.patch("sqx.fuentes.ahora_utc", return_value=momento), \
+            mock.patch("sqx.instrumento.ahora_utc", return_value=momento):
+        yield
+
+
+# Momentos de referencia: jueves con el mercado abierto y sábado con todo cerrado
+JUEVES = dt.datetime(2026, 11, 26, 18, tzinfo=dt.timezone.utc)
+SABADO = dt.datetime(2026, 11, 28, 9, 30, tzinfo=dt.timezone.utc)
 
 
 def medias_bytes(**kw):

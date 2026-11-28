@@ -117,6 +117,36 @@ class TestMedias(unittest.TestCase):
         self.assertEqual((e["muestras"], e["pip"], e["desde"]), (60, "0.0001", "2026-12-02"))
 
 
+class TestCierres(unittest.TestCase):
+    SABADO = utc(2026, 11, 28, 9, 30)
+
+    def test_cierre_y_reapertura(self):
+        casos = {"EURUSD": ("2026-11-27 21:55", "2026-11-29 22:05"),  # 16:55 → 17:05 Nueva York
+                 "GDAXI": ("2026-11-27 20:55", "2026-11-30 01:30"),   # Londres, lunes a viernes
+                 "NDX": ("2026-11-27 21:55", "2026-11-29 23:00")}
+        for s, (c, r) in casos.items():
+            cr = M.cierre_reapertura(registro(s), self.SABADO)
+            self.assertEqual([x.strftime("%Y-%m-%d %H:%M") for x in cr], [c, r], s)
+        self.assertIsNone(M.cierre_reapertura(registro("EURUSD"), utc(2026, 11, 24, 14)))  # abierto
+
+    def test_pausa_diaria(self):
+        cr = M.cierre_reapertura(registro("EURUSD"), utc(2026, 11, 25, 22))  # 17:00 NY, miércoles
+        self.assertEqual([x.strftime("%H:%M") for x in cr], ["21:55", "22:05"])
+
+    def test_ultimo_spread_de_los_cerrados(self):
+        precios = {"EURUSD": (Decimal("1.09707"), Decimal("1.09715")), "NDX": None}
+        ultimas = {"NDX": ["26714.3", "26715.5"]}
+        c = M.cierres(DX, precios, ultimas, self.SABADO)
+        self.assertEqual((c["EURUSD"]["spread"], c["EURUSD"]["pip"]), ("0.8", "0.0001"))
+        self.assertEqual(c["NDX"]["spread"], "1.2")  # sin cotización en el feed: última muestra
+        self.assertNotIn("XAUUSD", c)                 # sin cotización ni muestra
+        self.assertEqual(M.cierres(DX, precios, ultimas, utc(2026, 11, 24, 14)), {})  # abierto
+        # La skill lo usa mientras la media siga pendiente
+        m = M.calcular_medias({}, self.SABADO.date(), "2026-11-28", self.SABADO, c)
+        v, f = tabla.spread_desde_medias("EURUSD", m, "0.0001", self.SABADO)
+        self.assertEqual((v, f["tipo"], f["cierre_utc"]), ("0.80", "cierre", "2026-11-27 21:55"))
+
+
 class TestRonda(unittest.TestCase):
     def test_ronda_completa_en_disco(self):
         with tempfile.TemporaryDirectory() as tmp:

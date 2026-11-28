@@ -376,6 +376,10 @@ def como(fuente):
         return (f"Lectura del {fuente['fecha']} a las {fuente['hora_utc']} UTC: "
                 f"{fuente.get('nota', '').split(';')[0]} = {fuente['lectura']} "
                 f"({fuente['unidad']}) ÷ Pip/Tick Size. Solo informativo")
+    if t == "cierre":
+        return (f"Mercado cerrado y spread medio aún pendiente: último ask − bid de Darwinex antes "
+                f"del cierre del {fuente['cierre_utc']} UTC, sin comisiones: {fuente['lectura']} pips "
+                f"de {fuente['pip_fuente']}. Provisional hasta la reapertura ({fuente['reabre_utc']} UTC)")
     if t == "promedio" and tabla.es_muestreo(fuente):
         return (f"Media de ask − bid de Darwinex, 24 h, sin comisiones, del {fuente['desde']} al "
                 f"{fuente['hasta']} ({fuente['muestras']} muestras cada {fuente.get('intervalo_min')} "

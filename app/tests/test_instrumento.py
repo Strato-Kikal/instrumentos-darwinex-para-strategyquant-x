@@ -6,7 +6,8 @@ import datetime as dt
 import json
 import unittest
 
-from apoyo import PERFIL, medias_bytes, darwinex_modificado, fuentes_simuladas, tabla
+from apoyo import (JUEVES, PERFIL, SABADO, darwinex_modificado, en_hora, fuentes_simuladas,
+                   medias_bytes, tabla)
 from sqx import instrumento as I
 from sqx.fuentes import URL_BCE, URL_COSTES, URL_DARWINEX, FuenteError
 
@@ -151,12 +152,34 @@ class TestSpreadMedio(unittest.TestCase):
             self.assertEqual(t["fuentes"]["spread"]["tipo"], "promedio", s)
 
     def test_simbolo_aun_sin_muestras(self):
-        r = preparar("NI225")
+        with en_hora(JUEVES):  # mercado abierto: no hay último spread de cierre que usar
+            r = preparar("NI225")
         self.assertIn("spread", r["pendientes"])
         self.assertIn("todavía no tiene datos de NI225", r["tabla"]["fuentes"]["spread"]["motivo"])
 
+    def test_mercado_cerrado_usa_el_ultimo_spread(self):
+        """Sábado, sin media: Default Spread = último spread antes del cierre del viernes."""
+        with en_hora(SABADO):
+            r = preparar("EURUSD", sustituir={tabla.URL_DATOS_SPREAD: medias_bytes(muestras=12)})
+        t = r["tabla"]
+        f = t["fuentes"]["spread"]
+        self.assertEqual((r["estado"], r["pendientes"]), ("COMPLETA", []))
+        self.assertEqual((t["spread"], f["tipo"], f["lectura"]), ("0.50", "cierre", "0.5"))
+        self.assertEqual((f["cierre_utc"], f["reabre_utc"]), ("2026-11-27 21:55", "2026-11-29 22:05"))
+        self.assertTrue(any("provisional" in a for a in r["avisos"]))
+
+    def test_cierre_publicado_por_el_muestreo_tiene_prioridad(self):
+        m = json.loads(medias_bytes(quitar=("EURUSD",)))
+        m["cierres"] = {"EURUSD": {"spread": "0.8", "pip": "0.0001", "bid": "1.1", "ask": "1.10008",
+                                   "cierre_utc": "2026-11-27 21:55", "reabre_utc": "2026-11-29 22:05"}}
+        with en_hora(SABADO):
+            r = preparar("EURUSD", sustituir={tabla.URL_DATOS_SPREAD: json.dumps(m).encode()})
+        f = r["tabla"]["fuentes"]["spread"]
+        self.assertEqual((r["tabla"]["spread"], f["url"]), ("0.80", tabla.URL_DATOS_SPREAD))
+
     def test_pocas_muestras_queda_pendiente(self):
-        r = preparar("EURUSD", sustituir={tabla.URL_DATOS_SPREAD: medias_bytes(muestras=12)})
+        with en_hora(JUEVES):
+            r = preparar("EURUSD", sustituir={tabla.URL_DATOS_SPREAD: medias_bytes(muestras=12)})
         self.assertEqual((r["estado"], r["pendientes"]), ("INCOMPLETA", ["spread"]))
         self.assertIn("se rellena solo", r["tabla"]["fuentes"]["spread"]["motivo"])
         self.assertEqual(r["tabla"]["spread_instantaneo"], "0.5")  # se informa, pero no sustituye

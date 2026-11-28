@@ -6,7 +6,9 @@ app/muestreo_spread.py cada 15 minutos:
   2. lee el bid/ask de todos ellos en el feed de precios que usa la web de Darwinex,
   3. guarda ask − bid en pips (mismo Pip/Tick Size que la tabla) solo si el mercado está abierto
      y la cotización ha cambiado desde la muestra anterior (así no cuentan festivos ni pausas),
-  4. publica medias.json con la media de los últimos 30 días de cada símbolo.
+  4. publica medias.json con la media de los últimos 30 días de cada símbolo y, de los que tienen
+     el mercado cerrado, su último spread antes del cierre («cierres»): la app y la skill lo usan
+     como Default Spread provisional mientras la media siga pendiente y el mercado no reabra.
 Los datos viven en la rama «datos-spread» del repositorio; la app y la skill los leen de
 tabla.URL_DATOS_SPREAD. Sin comisiones: es solo el spread.
 """
@@ -63,6 +65,69 @@ def abierto(r, utc):
     if apertura < cierre:
         return dia <= 4 and apertura <= hora < cierre
     return (dia in (6, 0, 1, 2, 3) and hora >= apertura) or (dia <= 4 and hora < cierre)
+
+
+BUSQUEDA_MAX = dt.timedelta(days=10)  # tope al buscar el cierre o la reapertura (festivos largos)
+
+
+def cambio_estado(r, utc, hacia_atras):
+    """Primer minuto (UTC) en que el mercado está abierto, buscando desde «utc» hacia delante
+    (reapertura) o el minuto siguiente al último abierto hacia atrás (cierre). None si no lo
+    encuentra en BUSQUEDA_MAX. Busca en pasos de 15 min y afina minuto a minuto."""
+    t = utc.replace(second=0, microsecond=0)
+    signo = -1 if hacia_atras else 1
+    grueso, fino = dt.timedelta(minutes=15 * signo), dt.timedelta(minutes=signo)
+    recorrido = dt.timedelta(0)
+    while recorrido <= BUSQUEDA_MAX:
+        if abierto(r, t + grueso):
+            for _ in range(15):
+                t += fino
+                if abierto(r, t):
+                    return t + dt.timedelta(minutes=1) if hacia_atras else t
+            return None
+        t += grueso
+        recorrido += abs(grueso)
+    return None
+
+
+def cierre_reapertura(r, utc):
+    """(cierre, reapertura) en UTC de un mercado cerrado en «utc», o None si está abierto o no se
+    encuentran."""
+    if abierto(r, utc):
+        return None
+    cierre, reabre = cambio_estado(r, utc, True), cambio_estado(r, utc, False)
+    return (cierre, reabre) if cierre and reabre else None
+
+
+def entrada_cierre(r, bid, ask, pip, utc):
+    """Entrada de «cierres» de medias.json: último spread (pips) antes del cierre, o None."""
+    cr = cierre_reapertura(r, utc)
+    if cr is None or ask < bid:
+        return None
+    return {"spread": format(((ask - bid) / pip).normalize(), "f"),
+            "pip": format(pip.normalize(), "f"), "bid": format(bid, "f"), "ask": format(ask, "f"),
+            "cierre_utc": cr[0].strftime("%Y-%m-%d %H:%M"),
+            "reabre_utc": cr[1].strftime("%Y-%m-%d %H:%M")}
+
+
+def cierres(dx, precios, ultimas, ahora):
+    """{símbolo: entrada} de los símbolos con el mercado cerrado. La cotización es la que da el
+    feed con el mercado cerrado (la última antes del cierre); si no da ninguna, la última muestra
+    guardada en ultimas.json."""
+    res = {}
+    for ticker, _, r, pip in instrumentos(dx):
+        if abierto(r, ahora):
+            continue
+        q = precios.get(ticker)
+        if not q and ultimas.get(ticker):
+            try:
+                q = tuple(Decimal(x) for x in ultimas[ticker])
+            except ArithmeticError:
+                q = None
+        e = entrada_cierre(r, q[0], q[1], pip, ahora) if q else None
+        if e:
+            res[ticker] = e
+    return res
 
 
 def instrumentos(dx):
@@ -123,8 +188,9 @@ def muestrear(dx, precios, ultimas, dia, ahora):
     return cuenta
 
 
-def calcular_medias(dias, hoy, inicio, generado):
-    """medias.json a partir de {fecha: {símbolo: acumulado}} de los últimos DIAS_MEDIA días."""
+def calcular_medias(dias, hoy, inicio, generado, cierres_=None):
+    """medias.json a partir de {fecha: {símbolo: acumulado}} de los últimos DIAS_MEDIA días.
+    cierres_: último spread de los símbolos con el mercado cerrado (ver cierres())."""
     desde_min = hoy - dt.timedelta(days=DIAS_MEDIA - 1)
     acum = {}
     for fecha in sorted(dias):
@@ -159,7 +225,10 @@ def calcular_medias(dias, hoy, inicio, generado):
             "metodo": ("media de ask − bid del feed de precios de Darwinex (widgets.fxbluelabs.com), "
                        "en pips del Pip/Tick Size de la tabla, una muestra cada 15 min con el mercado "
                        "abierto según el horario de Darwinex y solo si la cotización cambió"),
-            "simbolos": simbolos}
+            "simbolos": simbolos,
+            "cierres": dict(sorted((cierres_ or {}).items())),
+            "cierres_metodo": ("con el mercado cerrado: ask − bid de la última cotización de Darwinex "
+                               "antes del cierre, en pips; vale hasta la reapertura (reabre_utc)")}
 
 
 def ejecutar(carpeta, fuentes, ahora=None):
@@ -176,6 +245,7 @@ def ejecutar(carpeta, fuentes, ahora=None):
     ruta_dia = carpeta / "dias" / f"{hoy.isoformat()}.json"
     dia = cargar(ruta_dia, {})
     cuenta = muestrear(dx, precios, ultimas, dia, ahora)
+    cerrados = cierres(dx, precios, ultimas, ahora)
     guardar(ruta_dia, dia)
     guardar(carpeta / "ultimas.json", ultimas)
     dias = {}
@@ -189,5 +259,5 @@ def ejecutar(carpeta, fuentes, ahora=None):
             continue
         dias[p.stem] = cargar(p, {})
     inicio = cargar(carpeta / "medias.json", {}).get("inicio") or hoy.isoformat()
-    guardar(carpeta / "medias.json", calcular_medias(dias, hoy, inicio, ahora))
+    guardar(carpeta / "medias.json", calcular_medias(dias, hoy, inicio, ahora, cerrados))
     return cuenta
