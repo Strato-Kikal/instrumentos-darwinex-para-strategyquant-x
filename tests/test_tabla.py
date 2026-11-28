@@ -249,7 +249,7 @@ class TestFuentes(unittest.TestCase):
     def test_spread_no_es_un_dato(self):
         d = ejemplo("EURUSD")
         d["fuentes"]["spread"] = {"tipo": "dato", "url": "x", "fecha": "2026-10-27"}
-        self.assertTrue(any("spread medio de Forex Benchmark" in x for x in errores(d)))
+        self.assertTrue(any("spread medio («promedio»" in x for x in errores(d)))
 
     def test_lectura_instantanea_no_vale_como_default_spread(self):
         d = ejemplo("EURUSD")
@@ -259,11 +259,14 @@ class TestFuentes(unittest.TestCase):
 
     def test_criterio_de_la_academia(self):
         for clave, valor in (("periodo_dias", "7"), ("franja", "Day"), ("comision", "incluida"),
-                             ("broker", "IC Markets (Raw)"), ("fuente", "Myfxbook"), ("unidad", "puntos")):
+                             ("broker", "IC Markets (Raw)"), ("unidad", "puntos")):
             d = ejemplo("EURUSD")
             d["fuentes"]["spread"][clave] = valor
             self.assertTrue(any(f"spread.{clave}" in x and "criterio de la academia" in x
                                 for x in errores(d)), clave)
+        d = ejemplo("EURUSD")
+        d["fuentes"]["spread"]["fuente"] = "Myfxbook"
+        self.assertTrue(any("spread.fuente" in x and tabla.FUENTE_MUESTREO in x for x in errores(d)))
         d = ejemplo("EURUSD")
         d["fuentes"]["spread"]["url"] = "https://www.myfxbook.com/forex-broker-spreads"
         self.assertTrue(any("spread.url" in x for x in errores(d)))
@@ -276,9 +279,10 @@ class TestFuentes(unittest.TestCase):
         self.assertTrue(any("Forex Benchmark no publica" in x for x in errores(d)))
 
     def test_unidad_de_forex_benchmark_sin_comprobar(self):
-        self.assertIsNone(tabla.pip_forex_benchmark("XAGUSD"))
+        # XAGUSD comprobado el 2026-11-28 contra bid/ask de Darwinex: pips de 0.01
+        self.assertEqual(tabla.pip_forex_benchmark("XAGUSD"), tabla.Decimal("0.01"))
         self.assertIsNone(tabla.pip_forex_benchmark("USDMXN"))
-        self.assertIn("no está comprobada", tabla.motivo_sin_spread_medio("XAGUSD"))
+        self.assertIn("no está comprobada", tabla.motivo_sin_spread_medio("USDMXN"))
         self.assertEqual(tabla.pip_forex_benchmark("gbpjpy"), tabla.Decimal("0.01"))
 
     def test_pip_de_forex_benchmark_equivocado(self):
@@ -298,7 +302,7 @@ class TestFuentes(unittest.TestCase):
         d["spread"], d["fuentes"]["spread"]["lectura"] = "4.2", "4.2"  # coma mal copiada
         r = tabla.validar(d, PERFIL)
         self.assertEqual(r.errores, [])
-        self.assertTrue(any("bien copiado" in a for a in r.avisos))
+        self.assertTrue(any("se diferencian más de" in a for a in r.avisos))
 
     def test_spread_instantaneo_sin_fuente(self):
         d = ejemplo("EURUSD")
@@ -527,6 +531,104 @@ class TestPdf(unittest.TestCase):
         self.assertIsNone(tabla.comprobar_pdf(destino))
 
 
+
+def medias(**cambios):
+    """medias.json de prueba (valores sintéticos, no medidos)."""
+    hoy = dt.date.today()
+    info = {"spread": "0.4234", "pip": "0.0001", "muestras": 2000, "min": "0.30", "max": "2.10",
+            "desde": (hoy - dt.timedelta(days=29)).isoformat(), "hasta": hoy.isoformat()}
+    info.update(cambios)
+    return {"fuente": tabla.FUENTE_MUESTREO, "intervalo_min": 15, "inicio": info["desde"],
+            "generado_utc": f"{hoy} 10:00", "simbolos": {"EURUSD": info}}
+
+
+def con_muestreo(**cambios):
+    d = ejemplo("EURUSD")
+    ahora = dt.datetime.now(dt.timezone.utc)
+    d["spread"], d["fuentes"]["spread"] = tabla.spread_desde_medias("EURUSD", medias(**cambios),
+                                                                     "0.0001", ahora)
+    d["consulta"] = d["creada"] = ahora.date().isoformat()
+    return d
+
+
+class TestSpreadAutomatico(unittest.TestCase):
+    """Default Spread del muestreo automático de Darwinex (medias.json)."""
+
+    def test_tabla_completa_sin_escribir_nada(self):
+        d = con_muestreo()
+        r = tabla.validar(d, PERFIL)
+        self.assertEqual(r.errores, [])
+        self.assertEqual(d["spread"], "0.42")
+        f = d["fuentes"]["spread"]
+        self.assertEqual((f["tipo"], f["fuente"], f["url"]),
+                         ("promedio", tabla.FUENTE_MUESTREO, tabla.URL_DATOS_SPREAD))
+        self.assertEqual(tabla.etiqueta_spread(f), tabla.ETIQUETA_MUESTREO)
+        self.assertIn("2000 muestras", tabla.periodo_spread(f))
+
+    def test_pocas_muestras_queda_pendiente(self):
+        d = con_muestreo(muestras=10)
+        self.assertEqual(d["spread"], tabla.PEND)
+        self.assertIn("se rellena solo", d["fuentes"]["spread"]["motivo"])
+        self.assertEqual(tabla.validar(d, PERFIL).errores, [])
+
+    def test_simbolo_sin_datos_queda_pendiente(self):
+        v, f = tabla.spread_desde_medias("NDX", medias(), "1", dt.datetime.now(dt.timezone.utc))
+        self.assertEqual(v, tabla.PEND)
+        self.assertIn("todavía no tiene datos de NDX", f["motivo"])
+
+    def test_pip_distinto_no_se_mezcla(self):
+        v, f = tabla.spread_desde_medias("EURUSD", medias(), "0.01", dt.datetime.now(dt.timezone.utc))
+        self.assertEqual(v, tabla.PEND)
+        self.assertIn("Pip/Tick Size", f["motivo"])
+
+    def test_periodo_corto_avisa(self):
+        hoy = dt.date.today()
+        d = con_muestreo(desde=(hoy - dt.timedelta(days=2)).isoformat())
+        r = tabla.validar(d, PERFIL)
+        self.assertEqual(r.errores, [])
+        self.assertTrue(any("cubre 3 días" in a for a in r.avisos))
+        self.assertIn("llegará a 30 días sola", tabla.periodo_spread(d["fuentes"]["spread"]))
+
+    def test_validacion_estricta(self):
+        d = con_muestreo()
+        d["fuentes"]["spread"]["muestras"] = "12"
+        self.assertTrue(any("muestras" in x for x in errores(d)))
+        d = con_muestreo()
+        d["fuentes"]["spread"]["periodo_dias"] = "7"
+        self.assertTrue(any("periodo_dias" in x for x in errores(d)))
+        d = con_muestreo()
+        d["fuentes"]["spread"]["url"] = "https://example.com/medias.json"
+        self.assertTrue(any("spread.url" in x for x in errores(d)))
+        d = con_muestreo()
+        d["fuentes"]["spread"]["desde"] = "2020-01-01"
+        self.assertTrue(any("pasa de 30 días" in x for x in errores(d)))
+        d = con_muestreo()
+        d["spread"] = "0.55"
+        self.assertTrue(any("no cuadra con la media del muestreo" in x for x in errores(d)))
+        d = con_muestreo()
+        d["fuentes"]["spread"]["pip_fuente"] = "0.00001"
+        self.assertTrue(any("pip_fuente" in x for x in errores(d)))
+
+    def test_redondeo(self):
+        self.assertEqual(tabla.redondear_spread("0.4234"), "0.42")
+        self.assertEqual(tabla.redondear_spread("48.2351"), "48.24")
+        self.assertEqual(tabla.redondear_spread("0.000312"), "0.00031")
+        self.assertEqual(tabla.redondear_spread("0"), "0")
+
+    def test_orden_spread(self):
+        ruta = Path(tempfile.mkdtemp()) / "medias.json"
+        ruta.write_text(json.dumps(medias()), encoding="utf-8")
+        salida, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(salida), redirect_stderr(err):
+            codigo = tabla.main(["spread", "eurusd", "--url", ruta.as_uri()])
+        self.assertEqual(codigo, 0, err.getvalue())
+        d = json.loads(salida.getvalue())
+        self.assertEqual(d["spread"], "0.42")
+        self.assertEqual(d["fuentes"]["spread"]["fuente"], tabla.FUENTE_MUESTREO)
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            self.assertEqual(tabla.main(["spread", "NDX", "--url", ruta.as_uri()]), 1)
+        shutil.rmtree(ruta.parent)
+
 class TestCli(unittest.TestCase):
     """La herramienta completa, como la llama Claude."""
 
@@ -618,7 +720,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         d = json.loads(p.read_text(encoding="utf-8"))
         self.assertEqual((d["spread"], d["spread_instantaneo"]), (tabla.PEND, "0.4"))
-        self.assertIn("falta el spread medio de Forex Benchmark", d["fuentes"]["spread"]["motivo"])
+        self.assertIn("tabla.py spread EURUSD", d["fuentes"]["spread"]["motivo"])
         self.assertTrue((self.tmp / "tablas" / "EURUSD.json.v2").exists())
 
     @unittest.skipUnless(hay_navegador(), "no hay navegador Chromium instalado")

@@ -1,6 +1,62 @@
 # Spread y slippage
 
-## Default spread: spread medio de Forex Benchmark (criterio de la academia)
+## Default spread: spread medio automático de Darwinex
+
+**Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones.**
+
+| Parámetro | Valor |
+|---|---|
+| Fuente | Muestreo ISQX del feed de precios de Darwinex: `medias.json` de la rama `datos-spread` (https://raw.githubusercontent.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/datos-spread/medias.json) |
+| Bróker | Darwinex (bid/ask del feed que usa su propia web, `widgets.fxbluelabs.com`) |
+| Periodo estadístico | Últimos 30 días naturales |
+| Franja horaria | 24 horas: todas las horas con el mercado abierto |
+| Muestras | Una cada 15 minutos (tarea programada de GitHub Actions `spread-medio.yml`) |
+| Comisiones | Excluidas: es solo ask − bid |
+| Unidad | Pips del Pip/Tick Size de la tabla (forex 0.0001, JPY 0.01, índices y cripto 1, metales y materias primas el tick real) |
+| Destino | Casilla Default Spread del instrumento en StrategyQuant X |
+
+El rollover del perfil (23:59) es otra cosa: no cambia el periodo ni la franja del spread, ni al revés.
+
+### Cómo se obtiene (nadie escribe nada)
+
+Cada 15 minutos, la tarea programada:
+1. lee la lista de símbolos y su horario en los datos de Darwinex;
+2. lee el bid/ask de todos (forex, índices, metales, petróleo, gas y cripto);
+3. guarda `(ask − bid) ÷ Pip/Tick Size` solo si el mercado está abierto según el horario de Darwinex **y** la cotización ha cambiado desde la muestra anterior (así no cuentan fines de semana, festivos ni pausas);
+4. publica en `medias.json` la media, el número de muestras, el periodo (`desde`, `hasta`) y el mínimo y el máximo de cada símbolo.
+
+- **En la skill**: `python3 -I "SK/scripts/tabla.py" spread <SÍMBOLO>` descarga `medias.json` y muestra el `spread` y su fuente listos para pegar en el JSON. Si sale PENDIENTE, no hay muestras suficientes todavía.
+- **En la app**: se consulta sola al pulsar «Obtener datos».
+
+**Mínimo**: 48 muestras (unas 12 horas de mercado abierto). Con menos, Default Spread queda PENDIENTE y se rellena solo más adelante.
+
+**Arranque**: el muestreo empezó el 2026-11-28. Hasta que acumule 30 días, la media cubre los días que lleva; la ficha lo dice («el muestreo empezó hace N días») y el script avisa. A partir del 2026-12-27 la media ya es de 30 días completos.
+
+**Si la tarea se detiene** (por ejemplo, GitHub desactiva las tareas programadas de un repositorio sin actividad), `hasta` deja de avanzar y el script avisa cuando el periodo termina más de 4 días antes de la consulta.
+
+### Diferencias con Forex Benchmark (criterio anterior)
+
+- Forex Benchmark promedia minuto a minuto; aquí, una muestra cada 15 minutos (unas 2 000 por símbolo en 30 días). La media converge, pero no es idéntica.
+- Forex Benchmark solo cubre forex y metales; el muestreo cubre todos los símbolos de forex, índices, materias primas y cripto de Darwinex.
+- Sus condiciones de uso no permiten consultarlo de forma automática, y por eso se dejó de usar como fuente principal el 2026-11-28.
+
+Se sigue aceptando una fuente `promedio` de Forex Benchmark (tablas anteriores), con su criterio exacto (ver más abajo), pero ya no hace falta.
+
+### Fuente en el JSON
+
+```json
+"spread": {"tipo": "promedio", "fuente": "Muestreo ISQX del feed de precios de Darwinex",
+           "broker": "Darwinex", "periodo_dias": "30", "franja": "24 horas", "comision": "excluida",
+           "unidad": "pips",
+           "url": "https://raw.githubusercontent.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/datos-spread/medias.json",
+           "fecha": "2026-12-28", "hora_utc": "10:05", "lectura": "0.4234", "pip_fuente": "0.0001",
+           "muestras": "1980", "desde": "2026-11-29", "hasta": "2026-12-28", "intervalo_min": "15"}
+```
+
+(Valores de ejemplo.) `tabla.py spread` lo genera tal cual. Validación: criterio exacto, al menos 48 muestras, periodo de 30 días como máximo, `pip_fuente` igual al Pip/Tick Size de la tabla y `spread` = `lectura` redondeada a 2 decimales (con menos de 0.1, a dos cifras significativas).
+
+## Forex Benchmark (criterio anterior, aceptado por compatibilidad)
+
 
 **Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones.**
 
@@ -16,7 +72,7 @@
 
 El rollover del perfil (23:59) es otra cosa: no cambia el periodo ni la franja del spread, ni al revés.
 
-### Cómo se obtiene
+### Cómo se obtenía
 
 Forex Benchmark no tiene API pública y sus condiciones de uso no permiten acceder al servicio por un método distinto de su web («access them using a method other than the interface and the instructions»). Por eso **el valor lo copia el usuario** de la web:
 
@@ -29,7 +85,8 @@ No consultes el endpoint interno de la página ni la «scrapees» seleccionando 
 ### Cobertura (lista leída el 2026-11-27)
 
 - **Sí**: pares de forex entre USD, EUR, JPY, GBP, CAD, AUD, NZD y CHF, y **XAUUSD**.
-- **Listados, pero con unidad sin comprobar**: XAGUSD y los exóticos (MXN, ZAR, TRY, NOK, SEK, CNH, HUF…). Quedan pendientes hasta comprobarlo. En XAGUSD importa: la skill usa Pip/Tick 0.001 y Forex Benchmark daba 1.63 el 2026-11-27, que solo es razonable en pips de 0.01 (1,6 centavos); si se confirma, habría que multiplicar por 10.
+- **XAGUSD**: comprobado el 2026-11-28. Darwinex daba bid 43.496 / ask 43.515 (0.019 USD) y Forex Benchmark 1.63: solo cuadra en pips de 0.01 (0.0163 USD); con 0.001 serían 0.0016 USD, menos que el spread real. Con el Pip/Tick 0.001 de la skill, Default Spread = 1.63 × 0.01 ÷ 0.001 = 16.3.
+- **Listados, pero con unidad sin comprobar**: los exóticos (MXN, ZAR, TRY, NOK, SEK, CNH, HUF…).
 - **No**: índices (NDX, GDAXI, NI225…), petróleo (XTIUSD), gas, cripto (BTCUSD…).
 
 Sin dato verificable, Default Spread queda **PENDIENTE DE VERIFICAR** y la tabla **INCOMPLETA**. El motivo indica las alternativas, **sin aplicarlas**:
@@ -82,7 +139,7 @@ Puede anotarse en `spread_instantaneo` (opcional) para comparar, **nunca en Defa
 - O una captura de MT5 → Observación de mercado (columna Spread, en puntos): `pips = puntos × punto de MT5 ÷ Pip/Tick Size`.
 - Fuente `observado`: `url`, `fecha`, `hora_utc`, `unidad` (`pips`, `puntos` o `precio`), `lectura` y, si es en puntos, `punto`.
 
-Si el medio y el instantáneo se diferencian más de 5 veces, el script avisa (posible error al copiar). Con el mercado cerrado, el instantáneo puede no ser representativo.
+Si el medio y el instantáneo se diferencian más de 5 veces, el script avisa (el instantáneo es una sola lectura). Con el mercado cerrado, el instantáneo puede no ser representativo.
 
 ## Default slippage: valor fijo
 

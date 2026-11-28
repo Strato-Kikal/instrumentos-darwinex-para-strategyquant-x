@@ -11,7 +11,7 @@ Cada regla se apoya en una fuente oficial de [verificacion-fuentes.md](verificac
 | Regla | Cómo se aplica | Base |
 |---|---|---|
 | Punto decimal | En StrategyQuant y en el JSON, siempre punto: `0.01`, nunca `0,01`. | Formato del script |
-| Spread medio | Default Spread = Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones ([spread-slippage.md](spread-slippage.md)). Lo copia el usuario; sin dato verificable, PENDIENTE con alternativas. El instantáneo es solo informativo. | Criterio de la academia (2026-11-27) |
+| Spread medio | Default Spread = Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones ([spread-slippage.md](spread-slippage.md)). Lo da `tabla.py spread <SÍMBOLO>`; nadie lo escribe. Sin muestras suficientes, PENDIENTE (se rellena solo). El instantáneo es solo informativo. | Criterio de la academia (30 días, 24 h, Darwinex, sin comisiones); fuente automática desde el 2026-11-28 |
 | Spread en pips | SQ pide el spread en pips de Pip/Tick. MT5 lo muestra en puntos (1 punto = 1 tick). Pips = puntos × No Pip/Tick ÷ Pip/Tick. Si Pip/Tick y No Pip/Tick coinciden, el número no cambia; si el tick es 10 veces menor, se divide entre 10, y así sucesivamente. Ejemplo del foro de SQ: 41 puntos en GBPJPY → 4.1. | Doc data-settings de SQ; foro de SQ |
 | Comisión | Por orden de Darwinex × 2, en USD (ver Tabla 2). | help.darwinex.com/execution-costs; foro de SQ |
 | Modelo de comisión | «Comisión en porcentaje» cuando la tabla de Darwinex da la comisión como % del valor de la orden; si no, «En función del tamaño». | Tablas de Darwinex |
@@ -48,7 +48,7 @@ Léelas sin caché (`maxAge: 0`). El spread de estas tablas es instantáneo: sol
 | Pip/Tick | Forex: 0.0001; 0.01 si cotiza en JPY. Index: 1. Metales y materias primas: el tick real (oro 0.01, plata 0.001). Crypto: 1. |
 | Point Value $ | Valor en USD de un movimiento de 1,0 en el precio con 1 lote = contrato × 1 en la divisa cotizada, convertido a USD (« aprox.» si se convierte). Definición SQ: strategyquant.com/forum/topic/3820. |
 | No Pip/Tick | Siempre el **tick real** (movimiento mínimo del precio). Forex: Pip/Tick ÷ 10, porque Darwinex cotiza con 5 decimales y 3 en JPY (darwinexzero.document360.io/docs/calculate-pip-and-tick-value). Resto: Tick value ÷ (contrato × 1 unidad de precio), con los datos de la tabla de Darwinex. **Nunca ÷ 10 fuera de forex.** Si la tabla no da el tick value: PENDIENTE DE VERIFICAR (MT5 → Especificación). |
-| Spread medio (pips) | Default Spread: Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones, en pips de Pip/Tick (`lectura × pip_fuente ÷ Pip/Tick`; en forex y XAUUSD el número no cambia). Con fecha y hora de consulta y, si se conoce, fecha final del periodo. El script comprueba el criterio y la conversión. Sin cobertura: PENDIENTE con alternativas. |
+| Spread medio (pips) | Default Spread: Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones, ya en pips de Pip/Tick (el muestreo mide con el mismo Pip/Tick Size de la tabla). Con fecha y hora de consulta y el periodo (desde, hasta y muestras). El script comprueba el criterio, el pip y el redondeo. Sin muestras suficientes: PENDIENTE (se rellena solo). |
 | Slippage · Min dist. · Order mult. · Order step | Ajustes personales del perfil (predeterminado 0 · 0 · 1 · 0.01). Los pone el script; no son datos del bróker. |
 
 ## Tabla 2: comisiones, swaps y rollover
@@ -67,6 +67,6 @@ Tipo de referencia del BCE con su fecha (ecb.europa.eu, euro_reference_exchange_
 
 ## Sin inventar
 
-- Cada casilla lleva su fuente estructurada (formato-json.md): dato con URL y fecha; spread medio con el criterio de Forex Benchmark, fecha, hora UTC, lectura y pip; cálculo con fórmula, entradas y sus fuentes; regla con su referencia.
+- Cada casilla lleva su fuente estructurada (formato-json.md): dato con URL y fecha; spread medio con su criterio, fecha, hora UTC, lectura, pip y periodo; cálculo con fórmula, entradas y sus fuentes; regla con su referencia.
 - Si un dato no aparece en ninguna fuente fiable, «PENDIENTE DE VERIFICAR» con una fuente `pendiente` y su motivo. La tabla queda INCOMPLETA y el PDF lo indica. Ejemplo: `examples/BTCUSD.json`.
 - Si dos fuentes discrepan, anótalo en «notas» y deja la casilla en «PENDIENTE DE VERIFICAR».

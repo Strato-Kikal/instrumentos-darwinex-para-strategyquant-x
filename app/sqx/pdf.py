@@ -273,7 +273,7 @@ def pagina_principal(lz, resultados):
     titulo_h2(lz, "1. Configuración principal del instrumento")
     tabla_sqx(lz, resultados, T1)
     lz.y += 1.5 * MM
-    parrafo(lz, f"Default Spread: {tabla.ETIQUETA_SPREAD}. La comisión va aparte, en la tabla 2: no "
+    parrafo(lz, f"Default Spread: {tabla.ETIQUETA_MUESTREO}. La comisión va aparte, en la tabla 2: no "
                 "se suma al spread. «(ajuste)» y Rollover (SQX) son ajustes personales del perfil, "
                 "no datos del bróker; el rollover no cambia el periodo del spread.", tam=7.5, col=GRIS)
     for res in resultados:
@@ -313,6 +313,7 @@ ETIQUETAS_URL = [
     (URL_BCE, "BCE · tipos de cambio"), (URL_COSTES, "Darwinex · costes"),
     (URL_HORA_MT, "Darwinex · hora MT5"), (URL_NOTA_PROPIA, "Darwinex · nota de swaps"),
     ("https://widgets.fxbluelabs.com", "Feed de precios"),
+    (tabla.URL_DATOS_SPREAD, "ISQX · spread medio automático"),
     ("https://forexbenchmark.com/", "Forex Benchmark · spreads históricos"), (URL_SQ_PV, "Foro SQ · Point value"),
     ("https://strategyquant.com/doc/", "Documentación SQ"), (URL_REPO, "Reglas de la skill"),
 ]
@@ -375,6 +376,10 @@ def como(fuente):
         return (f"Lectura del {fuente['fecha']} a las {fuente['hora_utc']} UTC: "
                 f"{fuente.get('nota', '').split(';')[0]} = {fuente['lectura']} "
                 f"({fuente['unidad']}) ÷ Pip/Tick Size. Solo informativo")
+    if t == "promedio" and tabla.es_muestreo(fuente):
+        return (f"Media de ask − bid de Darwinex, 24 h, sin comisiones, del {fuente['desde']} al "
+                f"{fuente['hasta']} ({fuente['muestras']} muestras cada {fuente.get('intervalo_min')} "
+                f"min): {fuente['lectura']} pips de {fuente['pip_fuente']}")
     if t == "promedio":
         return (f"Darwinex · 30 días · 24 h · sin comisiones, copiado a mano. Consulta "
                 f"{fuente['fecha']} {fuente['hora_utc']} UTC; periodo: {tabla.periodo_spread(fuente)}. "
@@ -406,8 +411,8 @@ def pagina_fuentes(lz, resultados, momento):
                 f"{perfil['nombre']} · {perfil['broker']} {perfil['plataforma']} · cuenta en "
                 f"{perfil['divisa_cuenta']} · datos {datos['proveedor']} descargados con "
                 f"«{datos['broker_profile_descarga']}» y clonados a «{datos['zona_clon']}». "
-                "Los enlaces azules abren la fuente. Origen: dato del bróker, spread medio de Forex "
-                "Benchmark (el de Default Spread), lectura instantánea (solo informativa), cálculo "
+                "Los enlaces azules abren la fuente. Origen: dato del bróker, spread medio de 30 "
+                "días (el de Default Spread), lectura instantánea (solo informativa), cálculo "
                 "(fórmula y entradas), regla de formato o ajuste personal (decisión del perfil, no "
                 "del bróker).", tam=7.5)
     lz.y += 2 * MM
@@ -443,7 +448,7 @@ def pagina_fuentes(lz, resultados, momento):
             parrafo(lz, a, tam=6.8, col=ROJO, sangria="! ")
         for n in res["tabla"].get("notas", []):
             parrafo(lz, n, tam=6.8, sangria="· ")
-        lz.y += 3 * MM
+        lz.y += 2 * MM
     parrafo(lz, "Herramienta de preparación de datos. No es asesoramiento financiero. Los CFD tienen "
                 "un riesgo alto de pérdida.", tam=6.8, col=GRIS)
 

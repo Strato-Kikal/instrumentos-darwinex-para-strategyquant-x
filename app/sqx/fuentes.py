@@ -6,6 +6,8 @@ Fuentes (comprobadas el 2026-11-26):
     navegador no puede leerlo desde otra web: lo consulta este servidor.
   - Spread: feed de precios que usa la propia web de Darwinex (widgets.fxbluelabs.com).
     Permite CORS, pero se consulta aquí para registrar la hora junto al resto.
+  - Spread medio: medias.json del muestreo automático (rama «datos-spread» del repositorio),
+    que publica cada 15 minutos la tarea de GitHub Actions (app/sqx/muestreo.py).
   - BCE: tipos de referencia diarios (XML). No envía cabeceras CORS.
   - help.darwinex.com/execution-costs: se comprueba en vivo que la comisión se publica por orden.
 
@@ -22,6 +24,8 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from decimal import Decimal
+
+from . import tabla
 
 URL_DARWINEX = "https://www.darwinex.com/graphics/spreads?dx_platform=DX"
 URL_PRECIOS = "https://widgets.fxbluelabs.com/webwidgets/getPriceData.aspx?id=Darwinex&f=bid,ask&s={}"
@@ -107,6 +111,18 @@ def leer_precios(datos):
     return res
 
 
+def leer_medias(datos):
+    """medias.json del muestreo automático, comprobando su estructura."""
+    try:
+        d = json.loads(datos.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise FuenteError("Spread medio automático", "la respuesta no es un JSON válido")
+    if (not isinstance(d, dict) or d.get("fuente") != tabla.FUENTE_MUESTREO
+            or not isinstance(d.get("simbolos"), dict)):
+        raise FuenteError("Spread medio automático", "la respuesta no tiene el formato esperado")
+    return d
+
+
 def leer_bce(datos):
     """(fecha AAAA-MM-DD, {divisa: unidades por 1 EUR}) del XML diario del BCE."""
     try:
@@ -145,7 +161,7 @@ class Fuentes:
     """Acceso a las fuentes en vivo. Darwinex se guarda 60 s (el JSON pesa ~0,5 MB y la web lo
     actualiza cada pocos minutos); BCE y la página de costes, 1 h. El spread nunca se guarda."""
 
-    CACHE_DARWINEX, CACHE_LENTA = 60, 3600
+    CACHE_DARWINEX, CACHE_MEDIAS, CACHE_LENTA = 60, 300, 3600
 
     def __init__(self, descargar_fn=descargar):
         self._descargar = descargar_fn
@@ -174,6 +190,18 @@ class Fuentes:
         url = URL_PRECIOS.format(simbolo)
         datos, hora = self._descargar(url, "Feed de spread")
         return leer_precios(datos).get(simbolo), hora, url
+
+    def precios_varios(self, simbolos):
+        """{símbolo: (bid, ask) o None} de varios símbolos en una sola petición."""
+        datos, _ = self._descargar(URL_PRECIOS.format(",".join(simbolos)), "Feed de spread")
+        return leer_precios(datos)
+
+    def medias(self):
+        """(medias.json del spread medio automático, hora UTC). Se guarda 5 minutos."""
+        def f():
+            datos, hora = self._descargar(tabla.URL_DATOS_SPREAD, "Spread medio automático")
+            return leer_medias(datos), hora
+        return self._con_cache("medias", self.CACHE_MEDIAS, f)
 
     def bce(self):
         """(fecha del BCE, tipos, hora UTC)."""
