@@ -1,0 +1,13 @@
+{
+ "broker": "Darwinex",
+ "comision": "excluida",
+ "franja": "24 horas",
+ "fuente": "Muestreo ISQX del feed de precios de Darwinex",
+ "generado_utc": "2026-11-28 09:10",
+ "inicio": "2026-11-28",
+ "intervalo_min": 15,
+ "metodo": "media de ask − bid del feed de precios de Darwinex (widgets.fxbluelabs.com), en pips del Pip/Tick Size de la tabla, una muestra cada 15 min con el mercado abierto según el horario de Darwinex y solo si la cotización cambió",
+ "periodo_dias": 30,
+ "simbolos": {},
+ "unidad": "pips"
+}
