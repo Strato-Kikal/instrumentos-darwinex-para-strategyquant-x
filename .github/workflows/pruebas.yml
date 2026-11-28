@@ -2,6 +2,7 @@ name: pruebas
 
 on:
   push:
+    branches-ignore: [datos-spread]
   pull_request:
 
 jobs:

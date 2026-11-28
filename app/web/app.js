@@ -117,12 +117,8 @@ async function consultar(texto) {
   const boton = $("obtener");
   boton.disabled = true;
   $("resultado").hidden = true;
-  mensaje("cargando", `Consultando Darwinex, el feed de precios y el BCE para ${simbolo.toUpperCase()}…`);
+  mensaje("cargando", `Consultando Darwinex, el spread medio, el feed de precios y el BCE para ${simbolo.toUpperCase()}…`);
   const q = new URLSearchParams({ simbolo });
-  const medio = $("spread_medio").value.trim();
-  const hasta = $("datos_hasta").value.trim();
-  if (medio) q.set("spread_medio", medio);
-  if (hasta) q.set("datos_hasta", hasta);
   try {
     const resp = await fetch(`api/instrumento?${q}`, { cache: "no-store" });
     let datos = null;

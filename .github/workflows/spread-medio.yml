@@ -1,0 +1,58 @@
+name: spread-medio
+
+# Spread medio automático de Darwinex (30 días, 24 horas, sin comisiones).
+# Cada 15 minutos lee el bid/ask de todos los símbolos, añade una muestra a los que cotizan y
+# publica medias.json en la rama «datos-spread». La app ISQX y la skill leen ese archivo.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: spread-medio
+  cancel-in-progress: false
+
+jobs:
+  muestreo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Código de la app (main)
+        uses: actions/checkout@v5
+        with:
+          path: codigo
+      - name: Datos (rama datos-spread)
+        run: |
+          set -e
+          url="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$url" datos-spread >/dev/null; then
+            git clone --quiet --depth 1 --branch datos-spread "$url" datos
+          else
+            mkdir datos && cd datos && git init --quiet -b datos-spread && git remote add origin "$url"
+          fi
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Muestreo
+        env:
+          PYTHONUTF8: "1"
+        run: python codigo/app/muestreo_spread.py --datos datos
+      - name: Publicar
+        working-directory: datos
+        run: |
+          set -e
+          git config user.name "isqx-muestreo"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ ! -f README.md ]; then
+            printf '%s\n' "# Spread medio automático (ISQX)" "" \
+              "Rama de datos: la escribe sola la tarea .github/workflows/spread-medio.yml de main." \
+              "medias.json = media de ask − bid de Darwinex de los últimos 30 días, en pips." > README.md
+          fi
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --quiet -m "Muestreo $(date -u '+%Y-%m-%d %H:%M') UTC"
+          for i in 1 2 3; do git push --quiet origin HEAD:datos-spread && exit 0; sleep 5; git pull --quiet --rebase origin datos-spread || true; done
+          exit 1

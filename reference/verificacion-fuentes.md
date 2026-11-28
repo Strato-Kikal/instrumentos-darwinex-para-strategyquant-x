@@ -25,12 +25,23 @@ La skill pone en SQ la comisión por orden × 2. Hay una base suficiente: Darwin
 |---|---|---|
 | Forex Benchmark publica el spread medio histórico de Darwinex con 30 días, 24 horas y sin comisión | Verificado | Página Historic spreads: Darwinex en la lista de brókeres; opciones «24 hours», «30 days» y «Add commission to spread» (desmarcada por defecto). Consulta del 2026-11-27 01:22 UTC (autorizada por el usuario, una sola vez): EURUSD 0.42, USDJPY 0.98, USDCAD 0.94, GBPJPY 2.60, GBPUSD 0.90, AUDUSD 0.70, XAUUSD 48.23, XAGUSD 1.63 |
 | Unidad: pips (forex 0.0001 / JPY 0.01; XAUUSD 0.01) | Verificado | «0.1 is added for every $1 of commission» y contraste con bid/ask de Darwinex (ver spread-slippage.md) |
-| Unidad de XAGUSD y de los exóticos | Pendiente | Sin lectura de Darwinex con la que contrastarla |
+| Unidad de XAGUSD | Verificado (2026-11-28) | Darwinex bid 43.496 / ask 43.515 = 0.019 USD; Forex Benchmark 1.63 solo cuadra en pips de 0.01 (0.0163 USD). Con el Pip/Tick 0.001 de la skill: × 10 |
+| Unidad de los exóticos | Pendiente | Sin lectura de Darwinex con la que contrastarla |
 | Cobertura | Verificado | Solo forex, XAUUSD y XAGUSD; ni índices, ni petróleo, ni cripto |
 | Fecha final del periodo | Pendiente | La tabla no la muestra; el valor parece la media de unos 21 días de mercado |
 | Comisión que Forex Benchmark atribuye a Darwinex: 5,00 USD por lote ida y vuelta | Verificado | Página Broker information. Coincide con la regla de la skill (2,5 por orden × 2) |
-| Consulta automática | No permitida sin permiso | Sin API pública; los términos de uso prohíben «access them using a method other than the interface and the instructions». El valor lo copia el usuario |
+| Consulta automática | No permitida sin permiso | Sin API pública; los términos de uso prohíben «access them using a method other than the interface and the instructions». Por eso, desde el 2026-11-28, la fuente principal es el muestreo automático propio (abajo) |
 | Qué cuenta de Darwinex miden (MT4 o MT5, servidor) | Pendiente | Forex Benchmark no lo indica |
+
+## Spread medio automático (muestreo ISQX, 2026-11-28)
+
+| Punto | Estado | Evidencia |
+|---|---|---|
+| El feed `widgets.fxbluelabs.com` (id=Darwinex) es el que usa la web de Darwinex y da bid/ask de todos sus símbolos | Verificado | Respuesta del 2026-11-28 con los 59 símbolos de forex, índices, materias primas y cripto de Darwinex (USDZAR, que Darwinex no lista, sale `noData`) |
+| Horario de cada símbolo | Verificado | Campos `timezone`, `opentime` y `closetime` del JSON de Darwinex (p. ej., forex 17:05–16:55 Nueva York; GDAXI 01:30–20:55 Londres; NI225 09:31–15:59 Nueva York) |
+| Pips con el Pip/Tick Size de la tabla | Verificado | Misma regla que la tabla (`pip_regla` en app/sqx/instrumento.py). Prueba con cotizaciones reales del 2026-11-27: EURUSD 0.5, XAUUSD 41, XAGUSD 19 (pip 0.001), NDX 0.9, XTIUSD 4 |
+| Muestra cada 15 minutos | Según GitHub | Las tareas programadas de GitHub Actions pueden retrasarse en horas de mucha carga; el número real de muestras queda en `muestras` |
+| La media converge con la de Forex Benchmark | Pendiente | Forex Benchmark promedia minuto a minuto. Comparar cuando haya 30 días de muestras (a partir del 2026-12-27) |
 
 **Comprobación pendiente en StrategyQuant build 143:** con una operación de 1 lote, el coste del spread debe ser Default Spread × valor del pip, y la comisión debe cobrarse una sola vez, aparte del spread.
 

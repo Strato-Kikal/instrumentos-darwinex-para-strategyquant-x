@@ -12,7 +12,7 @@ import urllib.error
 import zlib
 from pathlib import Path
 
-from apoyo import APP, FXB, PERFIL, fuentes_simuladas, respuesta, tabla
+from apoyo import APP, PERFIL, medias_bytes, fuentes_simuladas, respuesta, tabla
 from sqx import fuentes as F
 from sqx import instrumento as I
 from sqx import pdf
@@ -30,8 +30,8 @@ def textos_pdf(datos):
 
 
 class TestPdf(unittest.TestCase):
-    def generar(self, *simbolos):
-        rs = [I.preparar(s, fuentes_simuladas(), PERFIL, FXB.get(s)) for s in simbolos]
+    def generar(self, *simbolos, **kw):
+        rs = [I.preparar(s, fuentes_simuladas(**kw), PERFIL) for s in simbolos]
         return rs, pdf.generar(rs)
 
     def test_pdf_valido_con_estructura_de_la_skill(self):
@@ -46,8 +46,8 @@ class TestPdf(unittest.TestCase):
                          "Fuentes y cálculos", "Ajuste personal", "Comprobaciones pendientes en SQX",
                          "Datos completos · pendiente de validar en SQX", "Pip/Tick Size",
                          "Pip/Tick Step", "Tipo de swap", "Dinero / Money", "USD por lote y día",
-                         "Default Spread", "0.42 pips", "medio 30 días · 24 h", tabla.ETIQUETA_SPREAD,
-                         "Forex Benchmark no indica la fecha final", "solo informativo",
+                         "Default Spread", "0.42 pips", "medio 30 días · 24 h", tabla.ETIQUETA_MUESTREO,
+                         "1900 muestras cada 15 min", "solo informativo",
                          "USD por lote, ida y vuelta", "= 00:00 servidor MT5"):
             self.assertIn(esperado, " ".join(t), esperado)
         todo = " ".join(t)
@@ -63,7 +63,7 @@ class TestPdf(unittest.TestCase):
                           rb"\((https://[^)]+)\)", datos)
         self.assertGreater(len(uris), 10)
         for esperado in (b"https://www.darwinex.com/graphics/spreads", b"eurofxref-daily.xml",
-                         b"forexbenchmark.com/brokers/historic_spreads",
+                         b"raw.githubusercontent.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/datos-spread/medias.json",
                          b"help.darwinex.com/execution-costs", b"help.darwinex.com/metatrader-time"):
             self.assertTrue(any(esperado in u for u in uris), esperado)
         # Las anotaciones están en la página 2 (fuentes), no en la 1
@@ -72,10 +72,11 @@ class TestPdf(unittest.TestCase):
         self.assertIn(b"/Annots", paginas[1])
 
     def test_pdf_incompleto(self):
-        rs, datos = self.generar("EURUSD", "BTCUSD")
+        rs, datos = self.generar("EURUSD", "BTCUSD", sustituir={
+            "https://raw.githubusercontent.com": medias_bytes(quitar=("BTCUSD",))})
         t = " ".join(textos_pdf(datos))
         self.assertIn("BTCUSD: Datos incompletos · faltan: Default Spread, Swap largo, Swap corto", t)
-        self.assertIn("BTCUSD: Default Spread PENDIENTE DE VERIFICAR. Forex Benchmark no publica", t)
+        self.assertIn("BTCUSD: Default Spread PENDIENTE DE VERIFICAR. El muestreo automático todavía", t)
         self.assertIn("EURUSD: Datos completos · pendiente de validar en SQX", t)
         self.assertIn(tabla.PEND, t)
         self.assertEqual(pdf.nombre_archivo(rs)[-15:], "_INCOMPLETA.pdf")
@@ -86,8 +87,8 @@ class TestPdf(unittest.TestCase):
     def test_nombre_archivo(self):
         rs, _ = self.generar("EURUSD")
         self.assertRegex(pdf.nombre_archivo(rs), r"^EURUSD_Darwinex_\d{4}-\d{2}-\d{2}\.pdf$")
-        rs, _ = self.generar("USATECHIDXUSD")  # sin spread medio en Forex Benchmark
-        self.assertRegex(pdf.nombre_archivo(rs), r"^USATECHIDXUSD_Darwinex_\d{4}-\d{2}-\d{2}_INCOMPLETA\.pdf$")
+        rs, _ = self.generar("NI225")  # aún sin muestras del spread medio
+        self.assertRegex(pdf.nombre_archivo(rs), r"^NI225_Darwinex_\d{4}-\d{2}-\d{2}_INCOMPLETA\.pdf$")
 
     def test_texto_fuera_de_cp1252(self):
         self.assertEqual(pdf.a_cp1252("a → b ≠ c − d"), b"a -> b != c - d")
@@ -199,14 +200,12 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(self.get("/sw.js")[0], 200)
 
     def test_consulta_correcta_con_pdf(self):
-        s, _, cuerpo = self.get("/api/instrumento?simbolo=EURUSD&spread_medio=0.42&datos_hasta=2026-11-26")
+        s, _, cuerpo = self.get("/api/instrumento?simbolo=EURUSD")
         d = json.loads(cuerpo)
         self.assertEqual(s, 200)
         self.assertEqual(d["estado"], "COMPLETA")
-        self.assertEqual(d["tabla"]["spread"], "0.42")
-        self.assertEqual(d["tabla"]["fuentes"]["spread"]["datos_hasta"], "2026-11-26")
-        s, _, cuerpo = self.get("/api/instrumento?simbolo=EURUSD")
-        self.assertEqual((s, json.loads(cuerpo)["estado"]), (200, "INCOMPLETA"))
+        self.assertEqual(d["tabla"]["spread"], "0.42")  # sin escribir nada
+        self.assertEqual(d["tabla"]["fuentes"]["spread"]["fuente"], tabla.FUENTE_MUESTREO)
         self.assertTrue(base64.b64decode(d["pdf"]["base64"]).startswith(b"%PDF-"))
         self.assertEqual(d["perfil"]["divisa_cuenta"], "USD")
 
@@ -214,8 +213,6 @@ class TestServidor(unittest.TestCase):
         for ruta, codigo, clave in (("/api/instrumento?simbolo=", 400, "simbolo_no_valido"),
                                     ("/api/instrumento?simbolo=EURUSX", 404, "simbolo_desconocido"),
                                     ("/api/instrumento?simbolo=AAPL", 422, "fuera_de_alcance"),
-                                    ("/api/instrumento?simbolo=EURUSD&spread_medio=abc", 400,
-                                     "simbolo_no_valido"),
                                     ("/api/otra", 404, "no_existe")):
             s, _, cuerpo = self.get(ruta)
             self.assertEqual(s, codigo, ruta)

@@ -4,30 +4,31 @@ Aplicación web instalable (PWA) que prepara los datos de un instrumento de **Da
 
 Se basa en la skill «Instrumentos Darwinex para StrategyQuant X» de este repositorio, que **no se modifica**: la app importa `scripts/tabla.py` (perfil, reglas de validación, columnas y formato del PDF) y aplica las reglas de `reference/`.
 
-> Estado: versión 2.3.0 (Default Spread = spread medio de Forex Benchmark), para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
+> Estado: versión 2.4.0 (Default Spread = spread medio automático de Darwinex, sin escribir nada), para usar en local (ordenador, y móvil por la misma Wi-Fi). No está publicada en ningún alojamiento.
 
 ## Descargar
 
-Descarga: [instrumentos-sqx-2.3.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.3.0/instrumentos-sqx-2.3.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
+Descarga: [instrumentos-sqx-2.4.0.zip](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases/download/v2.4.0/instrumentos-sqx-2.4.0.zip) (todas las versiones en [Releases](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/releases)).
 
 Descomprímelo, abre una terminal en la carpeta y ejecuta `python3 app/servidor.py` (detalles en «Ejecutarla en local»).
 
 ## Qué hace
 
-1. Escribes un símbolo (`EURUSD`, `NDX`, `XAUUSD`… o el equivalente de Dukascopy `USATECHIDXUSD`) y, en forex y XAUUSD, el **spread medio** que copias de [Forex Benchmark](https://forexbenchmark.com/brokers/historic_spreads/) (Darwinex · 24 hours · 30 days · «Add commission to spread» sin marcar) y, si la conoces, la fecha final de esos datos. Pulsas **Obtener datos**.
+1. Escribes un símbolo (`EURUSD`, `NDX`, `XAUUSD`… o el equivalente de Dukascopy `USATECHIDXUSD`) y pulsas **Obtener datos**. No hay que escribir nada más.
 2. El servidor de la app consulta en ese momento:
    - **Darwinex**: el JSON que alimenta sus tablas de condiciones (contrato, tick, tick value, swaps, comisión, divisa, día de triple swap).
+   - **Spread medio**: `medias.json` de la rama `datos-spread`, que publica sola cada 15 minutos la tarea de GitHub Actions `spread-medio.yml` (bid/ask de Darwinex con el mercado abierto, media de 30 días).
    - **Spread instantáneo** (solo informativo): el feed de precios que usa la propia web de Darwinex (widgets.fxbluelabs.com). Nunca va en Default Spread.
    - **BCE**: tipos de referencia, solo si hay que convertir a USD.
    - **help.darwinex.com/execution-costs**: comprueba que la comisión se sigue publicando por orden.
 3. Aplica las reglas de la skill, registra cada valor con su fuente y lo valida con `tabla.validar()`. Lo que no tiene evidencia queda **PENDIENTE DE VERIFICAR**.
-4. Muestra los valores (con su origen: dato del bróker, spread medio de Forex Benchmark, lectura instantánea informativa, cálculo, regla o ajuste personal) y el botón **Descargar PDF**.
+4. Muestra los valores (con su origen: dato del bróker, spread medio de 30 días, lectura instantánea informativa, cálculo, regla o ajuste personal) y el botón **Descargar PDF**.
 
-**Default Spread** = **Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** (criterio de la academia; reglas en [reference/spread-slippage.md](../reference/spread-slippage.md)). Forex Benchmark no tiene API y sus condiciones de uso no permiten consultarlo de forma automática, así que la app no lo descarga: usa el valor que escribes, comprueba sus unidades y lo registra con la fecha de consulta y el periodo. Sin valor, o si Forex Benchmark no cubre el símbolo (índices, petróleo, cripto; XAGUSD y exóticos con unidad sin comprobar), Default Spread queda **PENDIENTE DE VERIFICAR** con las alternativas posibles, sin sustituir la fuente.
+**Default Spread** = **Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones** (reglas en [reference/spread-slippage.md](../reference/spread-slippage.md)). Cubre forex, índices, metales, petróleo, gas y cripto. Cada símbolo necesita 48 muestras (unas 12 horas de mercado abierto) antes de tener valor; mientras tanto queda **PENDIENTE DE VERIFICAR** y se rellena solo. El muestreo empezó el 2026-11-28: hasta el 2026-12-27 la media cubre menos de 30 días y la ficha lo indica. Antes (2.3.0) el valor se copiaba a mano de Forex Benchmark, cuyas condiciones de uso no permiten consultarlo de forma automática.
 
 El PDF (A4 apaisado) está pensado para rellenar StrategyQuant X directamente:
 
-- **Página 1**: estado («Datos completos · pendiente de validar en SQX» o «Datos incompletos · faltan: …»), tabla «1. Configuración principal del instrumento» y tabla «2. Comisiones, swaps y rollover» con los nombres de las casillas de SQX (Pip/Tick Size, Pip/Tick Step, Tipo de swap…) y sus unidades: Default Spread como «X pips · medio 30 días · 24 h» y, debajo de la tabla, «Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones» con la fecha de consulta, el periodo de los datos y, aparte, el spread instantáneo (solo informativo); comisión como «X USD por lote, ida y vuelta», swaps en USD por lote y día. Separa el rollover de SQX (ajuste del perfil, con la zona horaria de los datos clonados) de la hora a la que Darwinex cobra el swap (17:00 Nueva York = 00:00 del servidor MT5). Debajo, las comprobaciones que faltan dentro de SQX (spread y comisión separados, comisión de 1 lote, operación que cruce el rollover, triple swap).
+- **Página 1**: estado («Datos completos · pendiente de validar en SQX» o «Datos incompletos · faltan: …»), tabla «1. Configuración principal del instrumento» y tabla «2. Comisiones, swaps y rollover» con los nombres de las casillas de SQX (Pip/Tick Size, Pip/Tick Step, Tipo de swap…) y sus unidades: Default Spread como «X pips · medio 30 días · 24 h» y, debajo de la tabla, «Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones» con la fecha de consulta, el periodo de los datos (desde, hasta y muestras) y, aparte, el spread instantáneo (solo informativo); comisión como «X USD por lote, ida y vuelta», swaps en USD por lote y día. Separa el rollover de SQX (ajuste del perfil, con la zona horaria de los datos clonados) de la hora a la que Darwinex cobra el swap (17:00 Nueva York = 00:00 del servidor MT5). Debajo, las comprobaciones que faltan dentro de SQX (spread y comisión separados, comisión de 1 lote, operación que cruce el rollover, triple swap).
 - **Página 2**: fuentes y cálculos de cada casilla (origen, fórmula con sus entradas y fechas) con enlaces clicables cortos, horas de consulta, perfil y avisos. Si hay varios símbolos o mucho texto, se añaden páginas.
 
 Alcance, igual que la skill: Darwinex, cuenta en USD, forex, índices, materias primas/metales y cripto. Acciones, ETF y futuros dan un mensaje de «fuera de alcance».
@@ -43,7 +44,8 @@ Comprobado el 2026-11-26 desde un navegador:
 | Darwinex (`/graphics/spreads`) | **No.** Con una cabecera `Origin` de otra web responde `403 Invalid CORS request`. Además, la página de condiciones muestra a los visitantes de España un aviso de bloqueo (CNMV); el JSON sí respondió desde España sin `Origin`. |
 | BCE (XML diario) | **No.** No envía cabeceras CORS. |
 | Feed de spread (fxbluelabs) | Sí (`Access-Control-Allow-Origin: *`). |
-| Forex Benchmark (spread medio) | No se consulta: no tiene API y sus condiciones de uso no permiten acceder por otro medio que su web (comprobado el 2026-11-27). El usuario copia el valor. |
+| Spread medio (`raw.githubusercontent.com`, rama `datos-spread`) | Sí, pero se consulta desde el servidor como el resto. |
+| Forex Benchmark | No se consulta: no tiene API y sus condiciones de uso no permiten acceder por otro medio que su web (comprobado el 2026-11-27). |
 | help.darwinex.com | Sin CORS para lectura desde otra web. |
 
 Una app solo de navegador no puede obtener los datos del bróker, así que hace falta un servidor que haga las consultas. Ese servidor, de paso, sirve la interfaz y genera el PDF. Ventajas:
@@ -118,7 +120,7 @@ Antes de publicarla para otros usuarios:
 |---|---|---|
 | Identificar el ticker y la clase | Claude | `sqx/instrumento.py` (`buscar`, equivalencias de Dukascopy comprobadas) |
 | Leer las tablas de Darwinex | Claude con Firecrawl/WebFetch | `sqx/fuentes.py` (JSON de Darwinex) |
-| Spread medio (Default Spread) | El usuario copia el valor de Forex Benchmark; Claude lo registra | El usuario lo escribe; `sqx/instrumento.py` lo convierte y registra |
+| Spread medio (Default Spread) | `tabla.py spread` (muestreo automático) | `sqx/fuentes.py` + `tabla.spread_desde_medias` (muestreo automático, `sqx/muestreo.py`) |
 | Spread instantáneo (informativo) | Claude (tabla o `curl` al feed) | `sqx/fuentes.py` (feed de precios) |
 | Convertir a USD con el BCE | Claude | `sqx/instrumento.py` (`usd_por`) |
 | Aplicar reglas (pip, tick real, comisión × 2, triple swap…) | Claude con `reference/` | `sqx/instrumento.py` |
@@ -141,7 +143,7 @@ python3 -m unittest discover -s app/tests -v   # app (58 pruebas, sin red)
 python3 -m unittest discover -s tests -v       # skill (82 pruebas)
 ```
 
-Las pruebas de la app usan respuestas reales guardadas el 2026-11-26 (`app/tests/datos/`), solo como material de prueba. Cubren: EURUSD, USDJPY, USDCAD, GBPJPY, NDX, GDAXI, NI225, XAUUSD, XTIUSD, BTCUSD y USATECHIDXUSD; símbolos desconocidos, fuera de alcance y mal escritos; datos incompletos o contradictorios de Darwinex; spread medio de Forex Benchmark (valores reales del 2026-11-27, unidades, criterio, entrada mal escrita, sin valor, sin cobertura, fecha final del periodo); caída de Darwinex, del feed de precios, del BCE y de la página de costes; respuestas dañadas; errores de conexión; PDF; servidor, rutas y límite de consultas.
+Las pruebas de la app usan respuestas reales guardadas el 2026-11-26 (`app/tests/datos/`), solo como material de prueba, y un `medias.json` con valores sintéticos (`apoyo.py`). Cubren: EURUSD, USDJPY, USDCAD, GBPJPY, NDX, GDAXI, NI225, XAUUSD, XTIUSD, BTCUSD y USATECHIDXUSD; símbolos desconocidos, fuera de alcance y mal escritos; datos incompletos o contradictorios de Darwinex; spread medio automático (criterio, periodo corto, pocas muestras, símbolo sin datos, archivo caído o dañado) y el muestreo (horarios de Nueva York y Londres, fines de semana, cotizaciones repetidas, ventana de 30 días, cambio de pip, ronda completa en disco); caída de Darwinex, del feed de precios, del BCE y de la página de costes; respuestas dañadas; errores de conexión; PDF; servidor, rutas y límite de consultas.
 
 ## Estructura
 
@@ -150,6 +152,8 @@ app/
   servidor.py          servidor HTTP (interfaz + API)
   sqx/fuentes.py       consulta de fuentes en vivo
   sqx/instrumento.py   transformación de datos y reglas (antes las aplicaba Claude)
+  sqx/muestreo.py      spread medio automático (lo ejecuta muestreo_spread.py cada 15 min en GitHub)
+  muestreo_spread.py   una ronda del muestreo (tarea .github/workflows/spread-medio.yml)
   sqx/pdf.py           PDF sin dependencias (página 1 para SQX + fuentes y cálculos)
   sqx/metricas.py      anchos de Helvetica para el PDF
   web/                 PWA: index.html, app.js, estilos.css, manifest, service worker, iconos

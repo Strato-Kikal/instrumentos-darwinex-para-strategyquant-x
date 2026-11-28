@@ -1,5 +1,18 @@
 # Cambios
 
+## 2.4.0 (2026-11-28): spread medio automático, sin escribir nada
+
+- **Default Spread = Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones.** Nadie lo escribe: la tarea programada `.github/workflows/spread-medio.yml` lee cada 15 minutos el bid/ask de Darwinex (el feed que usa su web) para todos sus símbolos, guarda ask − bid en pips del Pip/Tick Size de la tabla solo con el mercado abierto (horario de Darwinex) y si la cotización cambió, y publica `medias.json` en la rama `datos-spread`.
+- **Cubre forex, índices, metales, petróleo, gas y cripto** (antes, índices, petróleo y cripto quedaban PENDIENTE). Cada símbolo necesita 48 muestras (unas 12 horas de mercado) antes de tener valor; mientras tanto queda PENDIENTE y se rellena solo. El muestreo empezó el 2026-11-28: hasta el 2026-12-27 la media cubre menos de 30 días y la ficha lo dice.
+- **App**: desaparecen los campos «Spread medio» y «Fecha final de los datos»; la API ya no lleva `spread_medio` ni `datos_hasta`. Nuevos `sqx/muestreo.py` y `muestreo_spread.py`; `pip_regla()` comparte la regla de Pip/Tick entre la tabla y el muestreo.
+- **Skill**: nueva orden `tabla.py spread <SÍMBOLO>`, que descarga la media y muestra el valor y la fuente listos para el JSON. Claude ya no pide el spread al usuario.
+- **`tabla.py`**: nueva fuente `promedio` del muestreo (criterio exacto, `muestras` ≥ 48, `desde`/`hasta` de 30 días como máximo, `pip_fuente` = Pip/Tick de la tabla, redondeo comprobado). Se sigue aceptando la de Forex Benchmark de tablas anteriores.
+- **XAGUSD**: comprobada la unidad de Forex Benchmark (pips de 0.01) contra el bid/ask de Darwinex del 2026-11-28 (0.019 USD frente a 1.63 → 0.0163 USD).
+- PDF de la app: la página de fuentes ya no se pasa a una tercera página cuando hay avisos de fin de semana.
+- La tarea de pruebas no se ejecuta en la rama `datos-spread`.
+- Pruebas: skill 82 → 90; app 58 → 69.
+- Pendiente: comparar la media con la de Forex Benchmark cuando haya 30 días de muestras (a partir del 2026-12-27) y la prueba dentro de StrategyQuant X build 143.
+
 ## 2.3.0 (2026-11-27): spread medio de Forex Benchmark (criterio de la academia)
 
 - **Default Spread = Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** en la skill y en la app. Antes era la lectura instantánea de Darwinex. Reglas, unidades y cobertura en `reference/spread-slippage.md`; verificación del 2026-11-27 en `reference/verificacion-fuentes.md`.

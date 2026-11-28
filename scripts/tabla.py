@@ -12,6 +12,8 @@ El PDF lleva dos tablas:
                                             (una fila por símbolo) y actualiza el acumulado
   tabla.py todas                            regenera el PDF acumulado
   tabla.py migrar <SIMBOLO|json> [...]      pasa un JSON antiguo (v1 o v2) al esquema 3
+  tabla.py spread <SIMBOLO>                 descarga el spread medio automático (muestreo ISQX)
+                                            y muestra el valor y la fuente listos para el JSON
   tabla.py perfil                           muestra el perfil activo y sus ajustes personales
   tabla.py navegador                        muestra el navegador que imprimirá el PDF
   tabla.py rutas
@@ -35,7 +37,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from decimal import Decimal, InvalidOperation
+import urllib.error
+import urllib.request
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 SK = Path(__file__).resolve().parent.parent
@@ -53,9 +57,24 @@ DIAS = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUN
 # Evidencia y alcance de la verificación: reference/verificacion-fuentes.md
 FACTOR_IDA_VUELTA = Decimal(2)
 
-# Default Spread: criterio de la academia (reference/spread-slippage.md). Spread medio histórico
-# de Forex Benchmark para Darwinex, 30 días, 24 horas, sin comisiones. El spread instantáneo
-# solo se guarda aparte («spread_instantaneo»), como información.
+# Default Spread (reference/spread-slippage.md): spread medio de 30 días y 24 horas de Darwinex,
+# sin comisiones. Fuente principal desde el 2026-11-28: el muestreo automático de ISQX (una tarea
+# de GitHub Actions lee el bid/ask de Darwinex cada 15 minutos y publica la media). Se sigue
+# aceptando el valor de Forex Benchmark (criterio anterior), ya no hace falta. El spread
+# instantáneo solo se guarda aparte («spread_instantaneo»), como información.
+REPO_GITHUB = "Strato-Kikal/instrumentos-darwinex-para-strategyquant-x"
+RAMA_DATOS = "datos-spread"
+URL_DATOS_SPREAD = f"https://raw.githubusercontent.com/{REPO_GITHUB}/{RAMA_DATOS}/medias.json"
+URL_DATOS_WEB = f"https://github.com/{REPO_GITHUB}/tree/{RAMA_DATOS}"
+FUENTE_MUESTREO = "Muestreo ISQX del feed de precios de Darwinex"
+INTERVALO_MUESTREO = 15  # minutos entre muestras (tarea programada de GitHub Actions)
+CRITERIO_MUESTREO = {"fuente": FUENTE_MUESTREO, "broker": "Darwinex", "periodo_dias": "30",
+                     "franja": "24 horas", "comision": "excluida", "unidad": "pips"}
+ETIQUETA_MUESTREO = ("Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX "
+                     "cada 15 min — sin comisiones")
+# Mínimo de muestras con mercado abierto (unas 12 horas) para dar la media por buena
+MIN_MUESTRAS = 48
+# Criterio anterior (Forex Benchmark), aceptado por compatibilidad
 URL_FXB = "https://forexbenchmark.com/brokers/historic_spreads/"
 CRITERIO_SPREAD = {"fuente": "Forex Benchmark", "broker": "Darwinex", "periodo_dias": "30",
                    "franja": "24 horas", "comision": "excluida", "unidad": "pips"}
@@ -69,7 +88,9 @@ FXB_SIMBOLOS = frozenset("""AUDCAD AUDCHF AUDJPY AUDNZD AUDUSD CADCHF CADJPY CHF
     USDTRY USDTWD USDZAR XAGUSD XAUUSD ZARJPY""".split())
 # Unidad comprobada el 2026-11-27 contra bid/ask de Darwinex (EURUSD, USDJPY, USDCAD, GBPJPY,
 # XAUUSD): pips de 0.0001 (0.01 si cotiza en JPY) en los pares entre estas divisas, y 0.01 en
-# XAUUSD. Exóticos y XAGUSD: sin comprobar → el spread queda pendiente.
+# XAUUSD. XAGUSD, el 2026-11-28: Darwinex bid 43.496 / ask 43.515 (0.019 USD) frente a 1.63 de
+# Forex Benchmark → pips de 0.01 (0.0163 USD); con 0.001 serían 0.0016 USD, menos que el spread
+# real. Exóticos: sin comprobar.
 FXB_DIVISAS = {"USD", "EUR", "JPY", "GBP", "CAD", "AUD", "NZD", "CHF"}
 # Diferencia entre spread medio e instantáneo a partir de la cual se avisa (posible error de copia)
 FACTOR_AVISO_SPREAD = Decimal(5)
@@ -80,7 +101,7 @@ def pip_forex_benchmark(simbolo):
     s = str(simbolo or "").upper()
     if s not in FXB_SIMBOLOS:
         return None
-    if s == "XAUUSD":
+    if s in ("XAUUSD", "XAGUSD"):
         return Decimal("0.01")
     if len(s) == 6 and s[:3] in FXB_DIVISAS and s[3:] in FXB_DIVISAS:
         return Decimal("0.01") if s[3:] == "JPY" else Decimal("0.0001")
@@ -104,8 +125,32 @@ def motivo_sin_spread_medio(simbolo, promedio_darwinex=None):
             "que indique la academia")
 
 
+def es_muestreo(f):
+    return isinstance(f, dict) and f.get("fuente") == FUENTE_MUESTREO
+
+
+def etiqueta_spread(f=None):
+    """Etiqueta del spread medio según su fuente (por defecto, el muestreo automático)."""
+    return ETIQUETA_SPREAD if isinstance(f, dict) and f.get("fuente") == "Forex Benchmark" \
+        else ETIQUETA_MUESTREO
+
+
+def dias_periodo(f):
+    """Días naturales entre «desde» y «hasta» (ambos incluidos), o None."""
+    d, e1 = fecha_real(f.get("desde"))
+    h, e2 = fecha_real(f.get("hasta"))
+    return None if e1 or e2 else (h - d).days + 1
+
+
 def periodo_spread(f):
     """Periodo que cubre el spread medio (no es la fecha de consulta)."""
+    if es_muestreo(f):
+        texto = (f"del {f.get('desde')} al {f.get('hasta')} · {f.get('muestras')} muestras cada "
+                 f"{f.get('intervalo_min', INTERVALO_MUESTREO)} min con el mercado abierto")
+        n = dias_periodo(f)
+        if n is not None and n < 30:
+            texto += f" (el muestreo empezó hace {n} días: la media llegará a 30 días sola)"
+        return texto
     if isinstance(f, dict) and texto_ok(f.get("datos_hasta")):
         return f"30 días hasta el {f['datos_hasta']}"
     return "últimos 30 días (Forex Benchmark no indica la fecha final)"
@@ -121,7 +166,7 @@ def lineas_spread(d):
         motivo = str(f.get("motivo", ""))
         lineas = [f"{s}: Default Spread PENDIENTE DE VERIFICAR. {motivo[:1].upper()}{motivo[1:]}".rstrip()]
     else:
-        lineas = [f"{s}: {d.get('spread')} pips · {ETIQUETA_SPREAD} · consultado el "
+        lineas = [f"{s}: {d.get('spread')} pips · {etiqueta_spread(f)} · consultado el "
                   f"{f.get('fecha')} {f.get('hora_utc')} UTC · periodo: {periodo_spread(f)}"]
     fi = fu.get("spread_instantaneo")
     if texto_ok(d.get("spread_instantaneo")) and isinstance(fi, dict):
@@ -142,7 +187,7 @@ TIPOS_FUENTE = {"dato", "observado", "promedio", "calculo", "regla", "pendiente"
 UNIDADES_SPREAD = {"pips", "puntos", "precio"}
 CLAVES_TABLA = ({"esquema", "simbolo", "consulta", "creada", "fuentes", "notas", "spread_instantaneo"}
                 | set(CAMPOS))
-CLAVES_EXTRA_FUENTE = {"nota", "texto_v1"}
+CLAVES_EXTRA_FUENTE = {"nota", "texto_v1", "desde", "hasta", "muestras", "intervalo_min"}
 
 RE_NUM = re.compile(r"^-?\d+(\.\d+)?$")
 RE_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -423,7 +468,7 @@ def validar_fuente(campo, f, valor_pend, consulta, r):
         return None
     extra = set(f) - {"tipo", "url", "fecha", "hora_utc", "unidad", "lectura", "punto", "formula",
                       "entradas", "regla", "referencia", "motivo", "datos_hasta", "pip_fuente"}
-    extra -= set(CRITERIO_SPREAD) | CLAVES_EXTRA_FUENTE
+    extra -= set(CRITERIO_SPREAD) | set(CRITERIO_MUESTREO) | CLAVES_EXTRA_FUENTE
     if extra:
         r.avisos.append(f"{pre}: claves desconocidas {sorted(extra)}")
     if valor_pend != (tipo == "pendiente"):
@@ -434,13 +479,13 @@ def validar_fuente(campo, f, valor_pend, consulta, r):
             r.errores.append(f"{pre}.motivo: explica qué evidencia falta")
         return tipo
     if campo == "spread" and tipo == "observado":
-        r.errores.append(f"{pre}: Default Spread lleva el spread medio de Forex Benchmark («promedio»: "
-                         "Darwinex, 30 días, 24 horas, sin comisiones), no una lectura instantánea; "
-                         "la lectura instantánea va en «spread_instantaneo»")
+        r.errores.append(f"{pre}: Default Spread lleva el spread medio («promedio»: Darwinex, 30 días, "
+                         "24 horas, sin comisiones; «tabla.py spread <SÍMBOLO>»), no una lectura "
+                         "instantánea; la lectura instantánea va en «spread_instantaneo»")
         return None
     if campo == "spread" and tipo != "promedio":
-        r.errores.append(f"{pre}: el spread debe ser el spread medio de Forex Benchmark («promedio») "
-                         "o «pendiente»")
+        r.errores.append(f"{pre}: el spread debe ser el spread medio («promedio», de «tabla.py spread "
+                         "<SÍMBOLO>») o «pendiente»")
         return None
     if tipo == "promedio" and campo != "spread":
         r.errores.append(f"{pre}: «promedio» es solo para Default Spread")
@@ -483,8 +528,14 @@ def validar_fuente(campo, f, valor_pend, consulta, r):
 
 
 def validar_promedio(pre, f, consulta, r):
-    """Fuente del spread medio: exactamente el criterio de la academia, con fecha de consulta y, si
-    se conoce, la fecha final del periodo (son cosas distintas)."""
+    """Fuente del spread medio: el muestreo automático de ISQX o, por compatibilidad, Forex
+    Benchmark, cada uno con su criterio exacto."""
+    if es_muestreo(f):
+        return validar_muestreo(pre, f, consulta, r)
+    if f.get("fuente") != "Forex Benchmark":
+        r.errores.append(f"{pre}.fuente: «{f.get('fuente')}»; usa «{FUENTE_MUESTREO}» (tabla.py "
+                         "spread <SÍMBOLO>) o «Forex Benchmark»")
+        return
     for k, v in CRITERIO_SPREAD.items():
         if f.get(k) != v:
             r.errores.append(f"{pre}.{k}: «{f.get(k)}»; el criterio de la academia es «{v}» "
@@ -510,6 +561,108 @@ def validar_promedio(pre, f, consulta, r):
         elif fecha and (fecha - hasta).days > 7:
             r.avisos.append(f"el periodo del spread medio termina el {hasta}, {(fecha - hasta).days} "
                             f"días antes de la consulta ({fecha})")
+
+
+def validar_muestreo(pre, f, consulta, r):
+    """Spread medio del muestreo automático: criterio, número de muestras y periodo."""
+    for k, v in CRITERIO_MUESTREO.items():
+        if f.get(k) != v:
+            r.errores.append(f"{pre}.{k}: «{f.get(k)}»; el criterio es «{v}» ({ETIQUETA_MUESTREO})")
+    if f.get("url") != URL_DATOS_SPREAD:
+        r.errores.append(f"{pre}.url: debe ser {URL_DATOS_SPREAD}")
+    fecha = validar_fecha_fuente(f"{pre}.fecha", f.get("fecha"), consulta, r)
+    err = hora_real(f.get("hora_utc"))
+    if err:
+        r.errores.append(f"{pre}.hora_utc: {err}")
+    _, _, err = parse_num(f.get("lectura"), ">=0", False)
+    if err:
+        r.errores.append(f"{pre}.lectura (media del muestreo, en pips): {err}")
+    _, _, err = parse_num(f.get("pip_fuente"), ">0", False)
+    if err:
+        r.errores.append(f"{pre}.pip_fuente (Pip/Tick Size con el que se midió): {err}")
+    m = str(f.get("muestras", ""))
+    if not m.isdigit():
+        r.errores.append(f"{pre}.muestras: número entero de muestras")
+    elif int(m) < MIN_MUESTRAS:
+        r.errores.append(f"{pre}.muestras: {m}; hacen falta al menos {MIN_MUESTRAS} (unas 12 horas "
+                         "de mercado). Mientras tanto, Default Spread queda pendiente")
+    desde, e1 = fecha_real(f.get("desde"))
+    hasta, e2 = fecha_real(f.get("hasta"))
+    for k, e in (("desde", e1), ("hasta", e2)):
+        if e:
+            r.errores.append(f"{pre}.{k}: {e}")
+    if e1 or e2:
+        return
+    if desde > hasta:
+        r.errores.append(f"{pre}: «desde» ({desde}) es posterior a «hasta» ({hasta})")
+    elif (hasta - desde).days + 1 > 30:
+        r.errores.append(f"{pre}: el periodo {desde} → {hasta} pasa de 30 días")
+    elif (hasta - desde).days + 1 < 30:
+        r.avisos.append(f"el spread medio cubre {(hasta - desde).days + 1} días ({desde} → {hasta}): "
+                        "el muestreo automático lo completará hasta 30 días")
+    if fecha and hasta > fecha:
+        r.errores.append(f"{pre}.hasta: {hasta} es posterior a la consulta ({fecha})")
+    elif fecha and (fecha - hasta).days > 4:
+        r.avisos.append(f"el spread medio termina el {hasta}, {(fecha - hasta).days} días antes de la "
+                        "consulta: puede que el muestreo automático se haya detenido")
+
+
+def redondear_spread(n):
+    """Media en pips: 2 decimales; con menos de 0.1, dos cifras significativas."""
+    n = Decimal(n)
+    if n == 0:
+        return "0"
+    exp = Decimal("0.01")
+    if n < Decimal("0.1"):
+        exp = Decimal(1).scaleb(n.adjusted() - 1)
+    v = n.quantize(exp, rounding=ROUND_HALF_UP)
+    return format(v, "f")
+
+
+def spread_desde_medias(simbolo, medias, pip, ahora):
+    """(valor, fuente) de Default Spread a partir de medias.json del muestreo automático. Si no hay
+    media utilizable, (PEND, fuente «pendiente») con el motivo. pip: Pip/Tick Size de la tabla."""
+    s = str(simbolo or "").upper()
+    info = (medias.get("simbolos") or {}).get(s) if isinstance(medias, dict) else None
+    inicio = medias.get("inicio") if isinstance(medias, dict) else None
+    if not isinstance(info, dict):
+        return PEND, {"tipo": "pendiente", "motivo": (
+            f"el muestreo automático todavía no tiene datos de {s}"
+            + (f" (empezó el {inicio})" if inicio else "")
+            + "; se rellena solo en cuanto el mercado abra y haya muestras")}
+    n = int(info.get("muestras") or 0)
+    if n < MIN_MUESTRAS:
+        return PEND, {"tipo": "pendiente", "motivo": (
+            f"el muestreo automático lleva {n} de las {MIN_MUESTRAS} muestras necesarias de {s} "
+            f"(unas 12 horas de mercado abierto); se rellena solo cuando las tenga")}
+    pip_m = Decimal(str(info.get("pip")))
+    if pip is None or Decimal(str(pip)) != pip_m:
+        return PEND, {"tipo": "pendiente", "motivo": (
+            f"el muestreo mide {s} en pips de {pip_m} y la tabla usa Pip/Tick Size {pip}")}
+    lectura = str(info.get("spread"))
+    return redondear_spread(lectura), {
+        "tipo": "promedio", **CRITERIO_MUESTREO, "url": URL_DATOS_SPREAD,
+        "fecha": ahora.date().isoformat(), "hora_utc": ahora.strftime("%H:%M"),
+        "lectura": lectura, "pip_fuente": format(pip_m.normalize(), "f"), "muestras": str(n),
+        "desde": info.get("desde"), "hasta": info.get("hasta"),
+        "intervalo_min": str(medias.get("intervalo_min", INTERVALO_MUESTREO)),
+        "nota": (f"media de ask − bid de Darwinex cada {medias.get('intervalo_min', INTERVALO_MUESTREO)}"
+                 f" min con el mercado abierto (mín. {info.get('min')}, máx. {info.get('max')} pips); "
+                 f"medias.json generado el {medias.get('generado_utc')} UTC")}
+
+
+def descargar_medias(url=URL_DATOS_SPREAD, timeout=20):
+    """medias.json del muestreo automático (dict). Eleva ErrorUso si no se puede leer."""
+    pet = urllib.request.Request(url, headers={"User-Agent": "InstrumentosSQX/1.0",
+                                               "Cache-Control": "no-cache"})
+    try:
+        with urllib.request.urlopen(pet, timeout=timeout) as resp:
+            d = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise ErrorUso(f"no se pudo descargar el spread medio automático ({url}): {e}")
+    if not isinstance(d, dict) or not isinstance(d.get("simbolos"), dict):
+        raise ErrorUso(f"{url} no tiene el formato esperado")
+    return d
 
 
 def validar_spread_instantaneo(d, fu, consulta, r):
@@ -552,7 +705,8 @@ def validar(d, perfil):
             return r
         if d.get("esquema") == 2:
             r.errores.append("esquema 2: el spread era una lectura instantánea. Conviértelo con "
-                             "«tabla.py migrar <SÍMBOLO>» y añade el spread medio de Forex Benchmark")
+                             "«tabla.py migrar <SÍMBOLO>» y añade el spread medio («tabla.py spread "
+                             "<SÍMBOLO>»)")
             return r
         r.errores.append(f"«esquema» debe ser {ESQUEMA}")
     desconocidas = set(d) - CLAVES_TABLA - set(AJUSTES)
@@ -649,7 +803,16 @@ def coherencia(d, fu, nums, aprox, tipos_fuente, r):
     # Default Spread: valor de Forex Benchmark pasado a pips de Pip/Tick.
     f_sp = fu.get("spread") if isinstance(fu, dict) else None
     sp = nums.get("spread")
-    if sp is not None and pip and tipos_fuente.get("spread") == "promedio":
+    if sp is not None and pip and tipos_fuente.get("spread") == "promedio" and es_muestreo(f_sp):
+        lect, _, e1 = parse_num(f_sp.get("lectura"), ">=0", False)
+        pfu, _, e2 = parse_num(f_sp.get("pip_fuente"), ">0", False)
+        if not e2 and pfu != pip:
+            r.errores.append(f"fuentes.spread.pip_fuente: {pfu}; el muestreo debe medir en el mismo "
+                             f"Pip/Tick Size de la tabla ({pip})")
+        elif not e1 and redondear_spread(lect) != format(sp, "f") and not casi_igual(lect, sp):
+            r.errores.append(f"spread {sp} no cuadra con la media del muestreo ({lect} pips): "
+                             f"redondeada da {redondear_spread(lect)}")
+    elif sp is not None and pip and tipos_fuente.get("spread") == "promedio":
         pip_fxb = pip_forex_benchmark(d.get("simbolo"))
         lect, _, e1 = parse_num(f_sp.get("lectura"), ">=0", False)
         pfu, _, e2 = parse_num(f_sp.get("pip_fuente"), ">0", False)
@@ -691,8 +854,8 @@ def coherencia(d, fu, nums, aprox, tipos_fuente, r):
                                  f"en pips de {pip} da {esperado.normalize():f}")
         if sp and si and (sp > si * FACTOR_AVISO_SPREAD or si > sp * FACTOR_AVISO_SPREAD):
             r.avisos.append(f"el spread medio ({sp} pips) y el instantáneo ({si} pips) se diferencian "
-                            f"más de {FACTOR_AVISO_SPREAD} veces: revisa que el valor de Forex "
-                            "Benchmark esté bien copiado")
+                            f"más de {FACTOR_AVISO_SPREAD} veces: el instantáneo es una sola lectura; "
+                            "revisa que no haya un error en el spread medio")
 
     # Comisión: Darwinex publica por orden; SQ la aplica ida y vuelta.
     if "comision" in d and not es_pendiente(d["comision"]) and tipos_fuente.get("comision"):
@@ -800,7 +963,7 @@ def tabla_html(datos, cols, izq, ancho):
 
 def nota_spread_html(datos):
     """Origen y periodo del spread de cada fila, bajo la tabla 1."""
-    lineas = [f"Spread medio (pips) = Default Spread de SQX: {ETIQUETA_SPREAD}. Las comisiones van "
+    lineas = [f"Spread medio (pips) = Default Spread de SQX: {ETIQUETA_MUESTREO}. Las comisiones van "
               "aparte, en la tabla 2; no se suman al spread."]
     for d in datos:
         lineas += lineas_spread(d)
@@ -1067,7 +1230,7 @@ def migrar_fuente(campo, valor, texto):
 
 def a_esquema3(d):
     """Esquema 2 → 3: la lectura instantánea pasa a «spread_instantaneo» (informativa) y Default
-    Spread queda pendiente hasta tener el spread medio de Forex Benchmark. No se inventa nada."""
+    Spread queda pendiente hasta añadir el spread medio («tabla.py spread»). No se inventa nada."""
     nuevo = dict(d, esquema=ESQUEMA)
     fu = dict(nuevo.get("fuentes") or {})
     f = fu.get("spread")
@@ -1076,8 +1239,8 @@ def a_esquema3(d):
         fu["spread_instantaneo"] = f
     if not (isinstance(f, dict) and f.get("tipo") in ("pendiente", "promedio")):
         s = nuevo.get("simbolo")
-        motivo = (f"falta el spread medio de Forex Benchmark ({ETIQUETA_SPREAD}): consúltalo en "
-                  f"{URL_FXB}" if pip_forex_benchmark(s) else motivo_sin_spread_medio(s))
+        motivo = (f"falta el spread medio ({ETIQUETA_MUESTREO}): ejecuta «tabla.py spread {s}» y "
+                  "copia el valor y la fuente que muestra")
         nuevo["spread"] = PEND
         fu["spread"] = {"tipo": "pendiente", "motivo": motivo}
     nuevo["fuentes"] = fu
@@ -1111,6 +1274,22 @@ def cmd_migrar(a):
         if r.estado == "NO VÁLIDA":
             codigo = 1
     return codigo
+
+
+def cmd_spread(a):
+    """Spread medio automático de un símbolo, listo para pegar en su JSON."""
+    medias = descargar_medias(a.url or URL_DATOS_SPREAD)
+    s = a.simbolo.upper()
+    info = medias["simbolos"].get(s)
+    pip = a.pip or (info or {}).get("pip")
+    valor, fuente = spread_desde_medias(s, medias, pip, dt.datetime.now(dt.timezone.utc))
+    print(json.dumps({"spread": valor, "fuentes": {"spread": fuente}}, ensure_ascii=False, indent=2))
+    if es_pendiente(valor):
+        print(f"PENDIENTE: {fuente['motivo']}", file=sys.stderr)
+        return 1
+    print(f"OK {s}: {valor} pips · {etiqueta_spread(fuente)} · periodo: {periodo_spread(fuente)}",
+          file=sys.stderr)
+    return 0
 
 
 def cmd_perfil(a):
@@ -1158,6 +1337,9 @@ def main(argv=None):
     x = s.add_parser("generar", parents=[comun, nav]); x.add_argument("simbolos", nargs="+"); x.set_defaults(f=cmd_generar)
     x = s.add_parser("todas", parents=[comun, nav]); x.set_defaults(f=cmd_todas)
     x = s.add_parser("migrar", parents=[comun]); x.add_argument("simbolos", nargs="+"); x.set_defaults(f=cmd_migrar)
+    x = s.add_parser("spread"); x.add_argument("simbolo")
+    x.add_argument("--pip", help="Pip/Tick Size de la tabla, si no coincide con el del muestreo")
+    x.add_argument("--url", help=argparse.SUPPRESS); x.set_defaults(f=cmd_spread)
     x = s.add_parser("perfil", parents=[comun]); x.set_defaults(f=cmd_perfil)
     x = s.add_parser("navegador", parents=[nav]); x.set_defaults(f=cmd_navegador)
     x = s.add_parser("rutas", parents=[comun]); x.set_defaults(f=cmd_rutas)

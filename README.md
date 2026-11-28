@@ -4,7 +4,7 @@
 
 Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolos para **StrategyQuant X (build 143)** con el bróker **Darwinex**: Pip/Tick, Point Value, tick real, spread medio, comisión, swaps y triple swap. Cada dato lleva su fuente y su fecha, y cada cálculo su fórmula y sus entradas.
 
-> **Spread (criterio de la academia, 2026-11-27)**: Default Spread = **Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones** ([reference/spread-slippage.md](reference/spread-slippage.md)). El usuario copia el valor de [Forex Benchmark](https://forexbenchmark.com/brokers/historic_spreads/); solo cubre forex y XAUUSD, y el resto queda PENDIENTE con alternativas. El spread instantáneo de Darwinex se muestra aparte, solo como información.
+> **Spread (desde 2.4.0, 2026-11-28)**: Default Spread = **Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones** ([reference/spread-slippage.md](reference/spread-slippage.md)). Una tarea programada de GitHub Actions ([spread-medio.yml](.github/workflows/spread-medio.yml)) lee el bid/ask de Darwinex cada 15 minutos y publica la media en la rama [`datos-spread`](https://github.com/Strato-Kikal/instrumentos-darwinex-para-strategyquant-x/tree/datos-spread). Nadie escribe nada, y cubre forex, índices, metales, petróleo, gas y cripto. El spread instantáneo de Darwinex se muestra aparte, solo como información.
 
 > **Nuevo: aplicación independiente «Instrumentos SQX»** (en pruebas, carpeta [`app/`](app/README.md)). Hace lo mismo sin Claude Code, sin cuentas de IA ni claves API: una web instalable (PWA) para móvil y ordenador con un pequeño servidor en Python que consulta las fuentes, aplica las reglas de la skill, valida con `tabla.py` y genera el PDF. La skill sigue funcionando igual.
 
@@ -12,8 +12,9 @@ Skill de Claude Code que prepara, en PDF, la tabla de configuración de símbolo
 
 | Quién | Qué hace |
 |---|---|
-| **Claude** (siguiendo `SKILL.md`) | Consulta las fuentes en vivo (tablas de Darwinex, BCE, documentación de StrategyQuant y, solo como información, el feed de precios), pide al usuario el spread medio de Forex Benchmark, decide qué valor va en cada casilla y escribe el JSON del símbolo con sus fuentes. |
-| **`scripts/tabla.py`** | Valida datos, fechas, tipos y fuentes; comprueba la coherencia (criterio y unidades del spread medio, comisión ida y vuelta, tick real, point value) y genera el PDF. No consulta internet. |
+| **Claude** (siguiendo `SKILL.md`) | Consulta las fuentes en vivo (tablas de Darwinex, BCE, documentación de StrategyQuant y, solo como información, el feed de precios), toma el spread medio automático con `tabla.py spread`, decide qué valor va en cada casilla y escribe el JSON del símbolo con sus fuentes. |
+| **`scripts/tabla.py`** | Valida datos, fechas, tipos y fuentes; comprueba la coherencia (criterio y unidades del spread medio, comisión ida y vuelta, tick real, point value) y genera el PDF. Solo se conecta a internet en `tabla.py spread`, para descargar el spread medio automático. |
+| **Tarea `spread-medio`** (GitHub Actions) | Cada 15 minutos mide el spread de todos los símbolos de Darwinex con el mercado abierto y publica la media de 30 días en la rama `datos-spread`. |
 | **El usuario** | Revisa el PDF e introduce los valores en StrategyQuant a mano. La skill no modifica StrategyQuant ni MetaTrader ni opera. |
 
 ## Requisitos
@@ -76,7 +77,7 @@ Códigos de salida: `0` correcto · `1` tabla no válida (o incompleta con `--es
 | Archivo | Muestra |
 |---|---|
 | `EURUSD.json` | Forex con comisión en EUR convertida a USD con el BCE (`5.59 aprox.`) y spread medio 0.42 |
-| `NDX.json` | Índice con tick real 0.1 (tick value ÷ contrato); **INCOMPLETA**: Forex Benchmark no publica índices |
+| `NDX.json` | Índice con tick real 0.1 (tick value ÷ contrato); **INCOMPLETA**: se preparó antes del spread medio automático (con `tabla.py spread NDX` se completa) |
 | `XAUUSD.json` | Comisión en porcentaje (0.0025 % por orden → 0.005) y spread medio 48.23 pips de 0.01 |
 | `BTCUSD.json` | Tabla **INCOMPLETA**: datos `PENDIENTE DE VERIFICAR` con su motivo |
 
@@ -95,12 +96,12 @@ Para usar los tuyos, copia el archivo a `~/strategyquant-darwinex-datos/perfil.j
 
 ## Formato del PDF
 
-Título «Configuración de símbolos de StrategyQuant para Darwinex», dos tablas («1. Configuración principal del instrumento» y «2. Comisiones, swaps y rollover»), bajo la primera el origen del spread de cada símbolo («Spread medio de 30 días — 24 horas — Darwinex — Forex Benchmark — sin comisiones», fecha de consulta y periodo; el instantáneo, aparte) y la firma «Skill created by Kike Argandona». Si hay datos pendientes, el nombre del archivo termina en `_INCOMPLETA`, aparece un aviso bajo el título y las casillas pendientes salen en rojo.
+Título «Configuración de símbolos de StrategyQuant para Darwinex», dos tablas («1. Configuración principal del instrumento» y «2. Comisiones, swaps y rollover»), bajo la primera el origen del spread de cada símbolo («Spread medio de 30 días — 24 horas — Darwinex — muestreo automático ISQX cada 15 min — sin comisiones», fecha de consulta y periodo; el instantáneo, aparte) y la firma «Skill created by Kike Argandona». Si hay datos pendientes, el nombre del archivo termina en `_INCOMPLETA`, aparece un aviso bajo el título y las casillas pendientes salen en rojo.
 
 ## Limitaciones
 
 - **Lecturas del momento**: spread medio y swaps cambian; StrategyQuant aplica un valor fijo a todo el histórico.
-- **Spread medio**: Forex Benchmark no tiene API y sus condiciones de uso no permiten consultarlo de forma automática: el valor lo copia el usuario. Solo cubre forex y XAUUSD (XAGUSD y exóticos, con unidad sin comprobar); índices, petróleo y cripto quedan PENDIENTE. No publica la fecha final del periodo ni qué cuenta de Darwinex mide, y el 2026-11-27 avisaba de que estaba recalculando sus datos.
+- **Spread medio automático**: una muestra cada 15 minutos (Forex Benchmark promedia minuto a minuto), con el feed de precios que usa la web de Darwinex, que no está documentado. El muestreo empezó el 2026-11-28: hasta el 2026-12-27 la media cubre menos de 30 días (la ficha lo indica), y cada símbolo necesita 48 muestras (unas 12 horas de mercado) antes de tener valor. GitHub puede retrasar las tareas programadas y las desactiva si el repositorio pasa 60 días sin actividad: si eso pasa, el script avisa de que el periodo se ha quedado atrás.
 - **Comisión ida y vuelta**: un administrador de StrategyQuant confirma que la comisión se aplica ida y vuelta, pero no hay página de documentación formal ni prueba en build 143. Ver `reference/verificacion-fuentes.md` para la prueba de una operación que lo cierra.
 - **Point Value convertido** (« aprox.»): usa el tipo del BCE de un día; el tipo real cambia a lo largo del histórico.
 - **Cripto**: Darwinex no publicaba su tabla de cripto el 2026-10-27; esos datos salen PENDIENTE DE VERIFICAR hasta comprobarlos en MT5.
